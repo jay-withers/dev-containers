@@ -2,7 +2,7 @@
 ARG BASE_IMAGE="ghcr.io/jay-withers/dev-container/base:latest"
 FROM ${BASE_IMAGE}
 
-ARG HELM_URL="https://get.helm.sh/helm-v4.2.1-linux-arm64.tar.gz@sha256:596b9a73d366c1e72ce67d595c22805480e30914593aafbc9f547694e72814db"
+ARG HELM_URL="https://get.helm.sh/helm-v4.2.2-linux-arm64.tar.gz@sha256:596b9a73d366c1e72ce67d595c22805480e30914593aafbc9f547694e72814db"
 ARG K9S_URL="https://github.com/derailed/k9s/releases/download/v0.51.0/k9s_Linux_arm64.tar.gz@sha256:3ee05c82e5f9198928a4e86133608ba6a2c10a2244d6a7789e820f78319d640c"
 ARG KUBECTL_URL="https://dl.k8s.io/release/v1.36.2/bin/linux/arm64/kubectl@sha256:c957eb8c4bea27a3bb35b269edd9082e27f027f7b76b20b5bf4afebc726c6d3e"
 ARG KUBECTX_URL="https://github.com/ahmetb/kubectx/releases/download/v0.11.0/kubectx_v0.11.0_linux_arm64.tar.gz@sha256:1dac2072216689e773325cb7587b858ea7415706ebcf04e23bf80e7e70555340"

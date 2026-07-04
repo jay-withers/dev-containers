@@ -2,9 +2,9 @@
 ARG BASE_IMAGE="ghcr.io/jay-withers/dev-container/base:latest"
 FROM ${BASE_IMAGE}
 
-ARG CHECKOV_URL="https://github.com/bridgecrewio/checkov/releases/download/3.2.529/checkov_linux_arm64.zip@sha256:fff55b064eadfc14ce35da9b9744dedf82fb50c25447076149480ad92c06a6a9"
+ARG CHECKOV_URL="https://github.com/bridgecrewio/checkov/releases/download/3.3.6/checkov_linux_arm64.zip@sha256:fff55b064eadfc14ce35da9b9744dedf82fb50c25447076149480ad92c06a6a9"
 ARG TERRAFORM_DOCS_URL="https://github.com/terraform-docs/terraform-docs/releases/download/v0.24.0/terraform-docs-v0.24.0-linux-arm64.tar.gz@sha256:d12bd7b73c1fc9c64efc79f8157dd713dabd559f1ecf3cfc0f42e32279a155fd"
-ARG TFLINT_URL="https://github.com/terraform-linters/tflint/releases/download/v0.61.0/tflint_linux_arm64.zip@sha256:999c25cfdb5208fe1133dec6b219e666a39fc2a7a0786a781dc9924ea5945ebf"
+ARG TFLINT_URL="https://github.com/terraform-linters/tflint/releases/download/v0.63.1/tflint_linux_arm64.zip@sha256:999c25cfdb5208fe1133dec6b219e666a39fc2a7a0786a781dc9924ea5945ebf"
 
 USER root
 
