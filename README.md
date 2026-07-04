@@ -47,7 +47,7 @@ images/
   base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, pre-commit
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
   k8s/Dockerfile         # FROM base + kubectl, kubectx, helm, k9s
-config/                  # shared pre-commit and tooling config
+.pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
 Makefile                 # setup / lint / build targets (run `make help`)
 ```
 
@@ -87,7 +87,7 @@ Recommended extensions for working on the images:
 
 ## Pre-commit hooks
 
-This repo's own hooks (defined in [config/.pre-commit-config.yaml](config/.pre-commit-config.yaml)) run on every commit:
+This repo's own hooks (defined in [.pre-commit-config.yaml](.pre-commit-config.yaml)) run on every commit:
 
 | Hook                   | What it checks                                                                                |
 | ---------------------- | --------------------------------------------------------------------------------------------- |
@@ -118,7 +118,7 @@ make lint    # run all hooks against every file
 [Renovate](https://docs.renovatebot.com/) is configured in [renovate.json](renovate.json) to keep pinned versions up to date automatically. It raises PRs for:
 
 - GitHub Actions (`uses:` pins in workflows)
-- Pre-commit hook revisions (`config/.pre-commit-config.yaml`)
+- Pre-commit hook revisions (`.pre-commit-config.yaml`)
 - Dockerfile `FROM` base images
 - Tool versions in Dockerfile ARGs across `images/base`, `images/terraform`, and `images/k8s`
 

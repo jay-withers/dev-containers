@@ -18,7 +18,7 @@ make lint    # run all pre-commit hooks against every file (the standard way to 
 make build   # build base, terraform, and k8s images locally
 ```
 
-Individual image builds are also available (`make build-base`, `make build-terraform`, `make build-k8s`). The `lint`/`setup` targets pass `--config config/.pre-commit-config.yaml` to `pre-commit` for you; invoke `pre-commit` directly with that flag if not using the Makefile.
+Individual image builds are also available (`make build-base`, `make build-terraform`, `make build-k8s`). The `lint`/`setup` targets wrap `pre-commit`, which picks up `.pre-commit-config.yaml` from the repo root automatically.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ Specialised images switch to `USER root` to install, then back to `USER vscode`.
 
 ### Pre-commit configuration
 
-This repo's own hooks live in **`config/.pre-commit-config.yaml`** — secret scanning, workflow/config linting, commit-message validation, plus the standard whitespace/format hooks. Hook revisions are frozen with a comment showing the upstream tag; Renovate keeps these updated automatically.
+This repo's own hooks live in **`.pre-commit-config.yaml`** at the repo root — secret scanning, workflow/config linting, commit-message validation, plus the standard whitespace/format hooks. Hook revisions are frozen with a comment showing the upstream tag; Renovate keeps these updated automatically.
 
 ### Dependency pinning and updates
 
@@ -42,11 +42,11 @@ Tool versions are declared as `ARG` values in each image's Dockerfile as full do
 
 ### Commit messages
 
-Commits must follow [Conventional Commits](https://www.conventionalcommits.org/). The commitlint hook (`config/commitlint.config.js`) enforces this at the `commit-msg` stage. The `no-commit-to-branch` hook blocks direct commits to `main`.
+Commits must follow [Conventional Commits](https://www.conventionalcommits.org/). The commitlint hook (`commitlint.config.js`) enforces this at the `commit-msg` stage. The `no-commit-to-branch` hook blocks direct commits to `main`.
 
 ### CI
 
-- **`.github/workflows/ci-pre-commit.yml`** — runs on PRs to `main`. Installs tools then runs `pre-commit run --all-files --config config/.pre-commit-config.yaml`. The `no-commit-to-branch` hook is skipped in CI via `SKIP=no-commit-to-branch`.
+- **`.github/workflows/ci-pre-commit.yml`** — runs on PRs to `main`. Installs tools then runs `pre-commit run --all-files`. The `no-commit-to-branch` hook is skipped in CI via `SKIP=no-commit-to-branch`.
 - **`.github/workflows/ci-container-build.yml`** — runs on PRs that change `images/**`. Builds the base image into a job-local registry, then builds the terraform and k8s images (`FROM` that base) for `linux/arm64` via QEMU and smoke-tests each tool. Nothing is pushed to GHCR.
 - **`.github/workflows/cd-tag.yml`** — runs on merge to `main`. Bumps the semver tag, then calls `cd-publish.yml` (reusable workflow) for the new version. Guarded so publish only runs when a tag was actually created.
 - **`.github/workflows/cd-publish.yml`** — reusable (`workflow_call`) and manual (`workflow_dispatch`). Checks out the given tag, builds and pushes the base image to GHCR, then each leaf image (`terraform`, `k8s`) referencing the freshly published base at the same version. Each image is tagged with both the version and `latest`. Re-runnable against an existing tag without minting a new version.
