@@ -53,7 +53,7 @@ Makefile                 # setup / lint / build targets (run `make help`)
 
 ## Tooling versions
 
-All tools are installed from pinned URLs with SHA256 digest verification at build time. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
+All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, which publishes no checksum file, is verified against the SHA256 digest reported by the GitHub release API). Azure CLI and kubectx have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
 
 Shell (bash) tab completion is enabled for: Azure CLI, kubectl, helm, terraform-docs, and terraform.
 
@@ -123,5 +123,7 @@ make lint    # run all hooks against every file
 - Tool versions in Dockerfile ARGs across `images/base`, `images/terraform`, and `images/k8s`
 
 Renovate will auto-approve and auto-merge PRs (squash) once the `ci-pre-commit` and `ci-container-build` workflows pass.
+
+For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` that requires at least the `pre-commit` and `base` status checks. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run.
 
 To enable it, install the [Renovate GitHub App](https://github.com/apps/renovate) on the repository.
