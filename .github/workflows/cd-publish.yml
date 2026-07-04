@@ -90,6 +90,8 @@ jobs:
           push: true
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/base:${{ inputs.version }}
+          secrets: |
+            gh_token=${{ secrets.GITHUB_TOKEN }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:latest
             ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:${{ inputs.version }}

@@ -93,6 +93,8 @@ jobs:
           load: true
           build-args: |
             BASE_IMAGE=${{ env.BASE_TAG }}
+          secrets: |
+            gh_token=${{ secrets.GITHUB_TOKEN }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:pr-${{ github.run_id }}
           cache-from: type=gha,scope=${{ matrix.image }}
