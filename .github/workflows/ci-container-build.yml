@@ -106,6 +106,7 @@ jobs:
           if [ "${{ matrix.image }}" = "terraform" ]; then
             docker run --rm --platform linux/arm64 "$IMAGE" bash -c "
               az --version && \
+              gh --version && \
               node --version && \
               pre-commit --version && \
               checkov --version && \
@@ -115,6 +116,7 @@ jobs:
           else
             docker run --rm --platform linux/arm64 "$IMAGE" bash -c "
               az --version && \
+              gh --version && \
               node --version && \
               pre-commit --version && \
               kubectl version --client && \

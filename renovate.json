@@ -59,6 +59,19 @@
     },
     {
       "customType": "regex",
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "cli/cli",
+      "fileMatch": [
+        "^images/base/Dockerfile$"
+      ],
+      "matchStrings": [
+        "ARG GH_URL=\"https://github\\.com/cli/cli/releases/download/v(?<currentValue>[^/]+)/[^\"]+\""
+      ],
+      "packageNameTemplate": "cli/cli",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "datasourceTemplate": "node-version",
       "depNameTemplate": "node",
       "fileMatch": [

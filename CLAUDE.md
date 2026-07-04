@@ -26,7 +26,7 @@ Individual image builds are also available (`make build-base`, `make build-terra
 
 Images form a base + specialisation hierarchy under `images/`:
 
-- **`images/base/Dockerfile`** — builds from `mcr.microsoft.com/devcontainers/base:ubuntu-24.04`. Installs the tooling common to every image: Azure CLI, Node.js, pre-commit. All tools are installed from pinned URLs that include a `@sha256:` digest suffix, verified at build time.
+- **`images/base/Dockerfile`** — builds from `mcr.microsoft.com/devcontainers/base:ubuntu-24.04`. Installs the tooling common to every image: Azure CLI, GitHub CLI, Node.js, pre-commit. Tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov against the GitHub release API digest); Azure CLI and kubectx, which publish no checksum, keep a hand-maintained `@sha256:` digest suffix.
 - **`images/terraform/Dockerfile`** — `FROM` the base image (via the `BASE_IMAGE` build arg, defaulting to the published `:latest`). Adds TFLint, Checkov, terraform-docs, and tfenv (which manages the Terraform version via `.terraform-version` in the consuming repo's workspace).
 - **`images/k8s/Dockerfile`** — `FROM` the base image. Adds kubectl, kubectx, helm, and k9s.
 
