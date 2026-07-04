@@ -137,7 +137,7 @@
   "platformAutomerge": true,
   "pre-commit": {
     "managerFilePaths": [
-      "(^|/)config/\\.pre-commit-config\\.yaml$"
+      "(^|/)\\.pre-commit-config\\.yaml$"
     ]
   },
   "schedule": [

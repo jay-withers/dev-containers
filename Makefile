@@ -1,5 +1,3 @@
-PRE_COMMIT_CONFIG := config/.pre-commit-config.yaml
-
 .DEFAULT_GOAL := help
 
 .PHONY: help setup lint build build-base build-terraform build-k8s
@@ -9,10 +7,10 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Install the pre-commit git hooks
-	pre-commit install --config $(PRE_COMMIT_CONFIG)
+	pre-commit install
 
 lint: ## Run all pre-commit hooks against every file
-	pre-commit run --all-files --config $(PRE_COMMIT_CONFIG)
+	pre-commit run --all-files
 
 build: build-base build-terraform build-k8s ## Build all images locally
 

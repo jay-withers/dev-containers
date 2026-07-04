@@ -38,9 +38,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-${{ hashFiles('config/.pre-commit-config.yaml') }}
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
 
       - name: Run pre-commit
         env:
           SKIP: no-commit-to-branch
-        run: pre-commit run --all-files --config config/.pre-commit-config.yaml
+        run: pre-commit run --all-files
