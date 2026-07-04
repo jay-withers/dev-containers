@@ -8,6 +8,7 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 ARG AZURE_CLI_URL="https://packages.microsoft.com/repos/azure-cli/pool/main/a/azure-cli/azure-cli_2.73.0-1~noble_arm64.deb@sha256:6af9009a39895ba396e92d5138824091e95f9bd797422db2fe9564a0cf4a35f4"
 # Renovate bumps the version tag in these URLs; each download is verified at
 # build time against the checksum the upstream project publishes for that version.
+ARG GH_URL="https://github.com/cli/cli/releases/download/v2.96.0/gh_2.96.0_linux_arm64.tar.gz"
 ARG NODE_URL="https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-arm64.tar.xz"
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v3.7.1/pre-commit-3.7.1.pyz"
 
@@ -43,5 +44,15 @@ RUN FILE="${NODE_URL##*/}" \
     && tar -xJ -C /usr/local --strip-components=1 -f "/tmp/${FILE}" \
     && rm "/tmp/${FILE}" /tmp/SHASUMS256.txt \
     && node --version
+
+# gh (GitHub CLI) — verified against the release's checksums.txt
+RUN FILE="${GH_URL##*/}" \
+    && curl -fsSL "${GH_URL}" -o "/tmp/${FILE}" \
+    && curl -fsSL "${GH_URL%/*}/${FILE%_linux_arm64.tar.gz}_checksums.txt" -o /tmp/gh.checksums.txt \
+    && (cd /tmp && sha256sum --ignore-missing -c gh.checksums.txt) \
+    && tar -xz -C /usr/local/bin --strip-components=2 -f "/tmp/${FILE}" "${FILE%.tar.gz}/bin/gh" \
+    && rm "/tmp/${FILE}" /tmp/gh.checksums.txt \
+    && gh --version \
+    && gh completion -s bash > /etc/bash_completion.d/gh
 
 USER vscode

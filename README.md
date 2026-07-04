@@ -55,11 +55,12 @@ Makefile                 # setup / lint / build targets (run `make help`)
 
 All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, which publishes no checksum file, is verified against the SHA256 digest reported by the GitHub release API). Azure CLI and kubectx have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
 
-Shell (bash) tab completion is enabled for: Azure CLI, kubectl, helm, terraform-docs, and terraform.
+Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, kubectl, helm, terraform-docs, and terraform.
 
 | Tool           | Version | Image     |
 | -------------- | ------- | --------- |
 | Azure CLI      | 2.73.0  | base      |
+| GitHub CLI     | 2.96.0  | base      |
 | Node.js        | 24.16.0 | base      |
 | pre-commit     | 3.7.1   | base      |
 | TFLint         | 0.61.0  | terraform |
