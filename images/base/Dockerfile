@@ -9,8 +9,8 @@ ARG AZURE_CLI_URL="https://packages.microsoft.com/repos/azure-cli/pool/main/a/az
 # Renovate bumps the version tag in these URLs; each download is verified at
 # build time against the checksum the upstream project publishes for that version.
 ARG GH_URL="https://github.com/cli/cli/releases/download/v2.96.0/gh_2.96.0_linux_arm64.tar.gz"
-ARG NODE_URL="https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-arm64.tar.xz"
-ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v3.7.1/pre-commit-3.7.1.pyz"
+ARG NODE_URL="https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-arm64.tar.xz"
+ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v3.8.0/pre-commit-3.8.0.pyz"
 
 # Base dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
