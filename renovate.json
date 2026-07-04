@@ -110,7 +110,8 @@
     }
   ],
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "schedule:weekly"
   ],
   "packageRules": [
     {
@@ -139,8 +140,5 @@
     "managerFilePaths": [
       "(^|/)\\.pre-commit-config\\.yaml$"
     ]
-  },
-  "schedule": [
-    "once a week"
-  ]
+  }
 }
