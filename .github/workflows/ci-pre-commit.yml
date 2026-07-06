@@ -1,46 +1,12 @@
-name: ci-pre-commit
+name: pre-commit
 
 on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   pre-commit:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
-      - name: Install actionlint
-        run: |
-          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
-            | tar -xz -C /usr/local/bin actionlint
-
-      - name: Install gitleaks
-        run: |
-          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz \
-            | tar -xz -C /usr/local/bin gitleaks
-
-      - name: Install pre-commit
-        run: pip install pre-commit==3.7.1
-
-      - name: Cache pre-commit envs
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-
-      - name: Run pre-commit
-        env:
-          SKIP: no-commit-to-branch
-        run: pre-commit run --all-files
+    uses: jay-withers/template-pipelines/.github/workflows/pre-commit.yml@bd8296ab9460020813f69f39c9b8e5080cf1b674 # v0.1.1

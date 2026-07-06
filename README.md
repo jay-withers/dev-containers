@@ -111,7 +111,7 @@ make lint    # run all hooks against every file
 | -------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ci-pre-commit`      | Every PR to `main`                        | Installs all tools and runs `pre-commit run --all-files` to validate hooks                           |
 | `ci-container-build` | PRs that change `images/**`               | Builds base, terraform, and k8s images for `linux/arm64` via QEMU and smoke-tests each tool          |
-| `cd-tag`             | Every merge to `main`                     | Bumps the semver tag, then calls `cd-publish` for the new version                                    |
+| `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`, or run manually       | Checks out the tag and builds/publishes every image to GHCR as that version and `latest`             |
 
 ## Dependency updates
@@ -125,6 +125,8 @@ make lint    # run all hooks against every file
 
 Renovate will auto-approve and auto-merge PRs (squash) once the `ci-pre-commit` and `ci-container-build` workflows pass.
 
-For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` that requires at least the `pre-commit` and `base` status checks. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run.
+For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` requiring the CI status check. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run.
+
+Configure both in one step with `make protect-branch` (wraps [scripts/protect-branch.sh](scripts/protect-branch.sh)). It requires a `gh` CLI authenticated with admin rights on the repo, and it: enables repository auto-merge and delete-branch-on-merge; clears any existing rulesets; then creates a ruleset requiring PR approval and the given status checks, while letting the repo admin and the Renovate app bypass both. Override the branch and required checks via `make protect-branch BRANCH=main CHECKS="pre-commit / Pre-commit"` (checks are newline-separated when passing more than one), or the repo/approval count via the `REPO`/`APPROVALS_REQUIRED` env vars — see the script header.
 
 To enable it, install the [Renovate GitHub App](https://github.com/apps/renovate) on the repository.
