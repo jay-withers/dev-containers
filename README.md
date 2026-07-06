@@ -125,8 +125,8 @@ make lint    # run all hooks against every file
 
 Renovate will auto-approve and auto-merge PRs (squash) once the `ci-pre-commit` and `ci-container-build` workflows pass.
 
-For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` that requires at least the `pre-commit` and `base` status checks. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run.
+For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` requiring the CI status check. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run.
 
-Apply that protection ruleset with `make protect-branch` (wraps [scripts/protect-branch.sh](scripts/protect-branch.sh)). It requires a `gh` CLI authenticated with admin rights on the repo, and creates/updates a ruleset that requires PR approval and the CI status check, while letting the repo admin and the Renovate app bypass both. Override the branch, required check, or approval count via arguments and the `REPO`/`APPROVALS_REQUIRED` env vars — see the script header.
+Configure both in one step with `make protect-branch` (wraps [scripts/protect-branch.sh](scripts/protect-branch.sh)). It requires a `gh` CLI authenticated with admin rights on the repo, and it: enables repository auto-merge and delete-branch-on-merge; clears any existing rulesets; then creates a ruleset requiring PR approval and the given status checks, while letting the repo admin and the Renovate app bypass both. Override the branch and required checks via `make protect-branch BRANCH=main CHECKS="pre-commit / Pre-commit"` (checks are newline-separated when passing more than one), or the repo/approval count via the `REPO`/`APPROVALS_REQUIRED` env vars — see the script header.
 
 To enable it, install the [Renovate GitHub App](https://github.com/apps/renovate) on the repository.
