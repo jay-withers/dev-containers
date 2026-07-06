@@ -127,4 +127,6 @@ Renovate will auto-approve and auto-merge PRs (squash) once the `ci-pre-commit` 
 
 For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` that requires at least the `pre-commit` and `base` status checks. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run.
 
+Apply that protection ruleset with `make protect-branch` (wraps [scripts/protect-branch.sh](scripts/protect-branch.sh)). It requires a `gh` CLI authenticated with admin rights on the repo, and creates/updates a ruleset that requires PR approval and the CI status check, while letting the repo admin and the Renovate app bypass both. Override the branch, required check, or approval count via arguments and the `REPO`/`APPROVALS_REQUIRED` env vars — see the script header.
+
 To enable it, install the [Renovate GitHub App](https://github.com/apps/renovate) on the repository.
