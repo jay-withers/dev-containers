@@ -1,0 +1,41 @@
+name: cd-weekly
+
+# Weekly rebuild of the latest release so images pick up upstream base OS
+# security patches without minting a new version. Resolves the most recent
+# semver tag and re-publishes it (version tag + latest) via cd-publish.
+on:
+  schedule:
+    # 06:00 UTC every Monday
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  # Resolve the latest release tag to rebuild.
+  resolve:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.latest.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve latest tag
+        id: latest
+        run: |
+          tag="$(git describe --tags --abbrev=0)"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Rebuilding ${tag}"
+
+  publish:
+    needs: resolve
+    if: needs.resolve.outputs.tag != ''
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/cd-publish.yml
+    with:
+      version: ${{ needs.resolve.outputs.tag }}
