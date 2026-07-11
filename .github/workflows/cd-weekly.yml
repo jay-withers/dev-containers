@@ -1,8 +1,9 @@
 name: cd-weekly
 
 # Weekly rebuild of the latest release so images pick up upstream base OS
-# security patches without minting a new version. Resolves the most recent
-# semver tag and re-publishes it (version tag + latest) via cd-publish.
+# security patches. Unlike an in-place refresh, this mints a *new* patch
+# version (so each version tag stays immutable/reproducible) and publishes it
+# as both the new version tag and latest via cd-publish.
 on:
   schedule:
     # 06:00 UTC every Monday
@@ -10,32 +11,49 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Resolve the latest release tag to rebuild.
-  resolve:
+  # Bump the patch version from the latest release and create a matching git
+  # tag + GitHub release. The weekly job runs on the already-tagged HEAD (no
+  # new commits), so we compute the bump ourselves rather than via the shared
+  # release template, which only tags when there are new commits.
+  tag:
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write
     outputs:
-      tag: ${{ steps.latest.outputs.tag }}
+      tag: ${{ steps.bump.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Resolve latest tag
-        id: latest
+      - name: Compute next patch version
+        id: bump
         run: |
-          tag="$(git describe --tags --abbrev=0)"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "Rebuilding ${tag}"
+          latest="$(git describe --tags --abbrev=0)"
+          version="${latest#v}"
+          IFS=. read -r major minor patch <<< "${version}"
+          next="v${major}.${minor}.$((patch + 1))"
+          echo "Bumping ${latest} -> ${next}"
+          echo "tag=${next}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.bump.outputs.tag }}"
+          git tag "${tag}" "${{ github.sha }}"
+          git push origin "${tag}"
+          gh release create "${tag}" \
+            --title "${tag}" \
+            --notes "Weekly rebuild for upstream base OS security patches."
 
   publish:
-    needs: resolve
-    if: needs.resolve.outputs.tag != ''
+    needs: tag
+    if: needs.tag.outputs.tag != ''
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/cd-publish.yml
     with:
-      version: ${{ needs.resolve.outputs.tag }}
+      version: ${{ needs.tag.outputs.tag }}
