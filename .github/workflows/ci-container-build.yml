@@ -109,6 +109,8 @@ jobs:
               gh --version && \
               node --version && \
               pre-commit --version && \
+              dig -v && \
+              jq --version && \
               checkov --version && \
               tflint --version && \
               terraform-docs --version
@@ -119,6 +121,8 @@ jobs:
               gh --version && \
               node --version && \
               pre-commit --version && \
+              dig -v && \
+              jq --version && \
               kubectl version --client && \
               helm version && \
               k9s version && \
