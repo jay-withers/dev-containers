@@ -120,7 +120,7 @@ make lint    # run all hooks against every file
 
 ## Dependency updates
 
-[Renovate](https://docs.renovatebot.com/) is configured in [renovate.json](renovate.json) to keep pinned versions up to date automatically. It raises PRs for:
+[Renovate](https://docs.renovatebot.com/) is configured in [renovate.json](renovate.json) to keep pinned versions up to date automatically. The config extends two shared [`jay-withers/template-renovate`](https://github.com/jay-withers/template-renovate) presets — the umbrella preset (auto-merge policy, weekly schedule, ecosystem grouping/labels) and the `:dev-container` preset (custom managers for the version-pinned Dockerfile tool ARGs). It raises PRs for:
 
 - GitHub Actions (`uses:` pins in workflows)
 - Pre-commit hook revisions (`.pre-commit-config.yaml`)
