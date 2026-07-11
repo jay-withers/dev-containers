@@ -4,11 +4,11 @@ A catalog of VS Code dev container images for Azure infrastructure development. 
 
 ## Available images
 
-| Image       | Registry path                                      | Tooling on top of base                       |
-| ----------- | -------------------------------------------------- | -------------------------------------------- |
-| `base`      | `ghcr.io/jay-withers/dev-container/base`           | Azure CLI, Node.js, pre-commit               |
-| `terraform` | `ghcr.io/jay-withers/dev-container/terraform`      | + tflint, checkov, terraform-docs, tfenv     |
-| `k8s`       | `ghcr.io/jay-withers/dev-container/k8s`            | + kubectl, kubectx, helm, k9s                |
+| Image       | Registry path                                 | Tooling on top of base                                |
+| ----------- | --------------------------------------------- | ----------------------------------------------------- |
+| `base`      | `ghcr.io/jay-withers/dev-container/base`      | Azure CLI, Node.js, pre-commit, general CLI utilities |
+| `terraform` | `ghcr.io/jay-withers/dev-container/terraform` | + tflint, checkov, terraform-docs, tfenv              |
+| `k8s`       | `ghcr.io/jay-withers/dev-container/k8s`       | + kubectl, kubectx, helm, k9s                         |
 
 Each specialised image is built `FROM` the base image, so common tooling stays in one place.
 
@@ -44,7 +44,7 @@ To pin to a specific image version rather than `latest`, use a semver tag:
 
 ```text
 images/
-  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, pre-commit
+  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, pre-commit, general CLI utilities
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
   k8s/Dockerfile         # FROM base + kubectl, kubectx, helm, k9s
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
@@ -53,24 +53,27 @@ Makefile                 # setup / lint / build targets (run `make help`)
 
 ## Tooling versions
 
-All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, which publishes no checksum file, is verified against the SHA256 digest reported by the GitHub release API). Azure CLI and kubectx have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
+All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, which publishes no checksum file, is verified against the SHA256 digest reported by the GitHub release API). Azure CLI, kubectx, and ble.sh have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
 
-Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, kubectl, helm, terraform-docs, and terraform.
+The base image also installs a set of general-purpose CLI utilities from Ubuntu's apt repositories (apt verifies these itself, so they carry no version pin): DNS/network tools (`dig`, `nslookup`, `host`, `ping`, `traceroute`, `nc`), plus `jq`, `wget`, `rsync`, `zip`, `file`, `tree`, `vim`, `nano`, and `less`.
 
-| Tool           | Version | Image     |
-| -------------- | ------- | --------- |
-| Azure CLI      | 2.73.0  | base      |
-| GitHub CLI     | 2.96.0  | base      |
-| Node.js        | 24.16.0 | base      |
-| pre-commit     | 3.7.1   | base      |
-| TFLint         | 0.61.0  | terraform |
-| Checkov        | 3.2.529 | terraform |
-| terraform-docs | 0.24.0  | terraform |
-| tfenv          | latest  | terraform |
-| kubectl        | 1.36.2  | k8s       |
-| helm           | 4.2.1   | k8s       |
-| k9s            | 0.51.0  | k8s       |
-| kubectx        | 0.11.0  | k8s       |
+Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, kubectl, helm, terraform-docs, and terraform. The base image also ships [ble.sh](https://github.com/akinomyoga/ble.sh), which gives interactive bash shells Fish-style inline autosuggestions — as you type, the most recent matching command from history appears greyed-out ahead of the cursor; press the right-arrow key to accept it. It is sourced automatically from the `vscode` user's `.bashrc`.
+
+| Tool           | Version      | Image     |
+| -------------- | ------------ | --------- |
+| Azure CLI      | 2.73.0       | base      |
+| GitHub CLI     | 2.96.0       | base      |
+| Node.js        | 24.16.0      | base      |
+| pre-commit     | 3.7.1        | base      |
+| ble.sh         | 0.4.0-devel3 | base      |
+| TFLint         | 0.61.0       | terraform |
+| Checkov        | 3.2.529      | terraform |
+| terraform-docs | 0.24.0       | terraform |
+| tfenv          | latest       | terraform |
+| kubectl        | 1.36.2       | k8s       |
+| helm           | 4.2.1        | k8s       |
+| k9s            | 0.51.0       | k8s       |
+| kubectx        | 0.11.0       | k8s       |
 
 ## VS Code extensions
 
