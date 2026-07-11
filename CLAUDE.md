@@ -38,7 +38,7 @@ This repo's own hooks live in **`.pre-commit-config.yaml`** at the repo root —
 
 ### Dependency pinning and updates
 
-Tool versions are declared as `ARG` values in each image's Dockerfile as full download URLs with `@sha256:` digests appended. **`renovate.json`** uses regex custom managers (scoped per Dockerfile via `managerFilePaths`) to parse these ARGs and raise PRs when new releases are available. Renovate also updates GitHub Actions pins, Dockerfile `FROM` base images, and pre-commit hook revisions. All Renovate PRs are auto-approved and auto-merged (squash) once CI passes.
+Tool versions are declared as `ARG` values in each image's Dockerfile as full download URLs with `@sha256:` digests appended. **`renovate.json`** extends two shared [`jay-withers/template-renovate`](https://github.com/jay-withers/template-renovate) presets: the umbrella preset (auto-merge policy, weekly schedule, ecosystem grouping/labels, and handling of GitHub Actions pins, Dockerfile `FROM` base images, and pre-commit hook revisions) and the `:dev-container` preset, whose regex custom managers parse the tool ARGs in each image Dockerfile and raise PRs — grouped into a single "dev container tools" PR — when new releases are available. Because the custom managers live in the shared preset, adding a new pinned tool ARG here means adding a manager to [`template-renovate/dev-container.json`](https://github.com/jay-withers/template-renovate/blob/main/dev-container.json), not to this repo. All Renovate PRs are auto-approved and auto-merged (squash) once CI passes.
 
 ### Commit messages
 

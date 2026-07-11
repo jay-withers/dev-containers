@@ -120,7 +120,7 @@ make lint    # run all hooks against every file
 
 ## Dependency updates
 
-[Renovate](https://docs.renovatebot.com/) is configured in [renovate.json](renovate.json) to keep pinned versions up to date automatically. It raises PRs for:
+[Renovate](https://docs.renovatebot.com/) is configured in [renovate.json](renovate.json) to keep pinned versions up to date automatically. The config extends two shared [`jay-withers/template-renovate`](https://github.com/jay-withers/template-renovate) presets — the umbrella preset (auto-merge policy, weekly schedule, ecosystem grouping/labels) and the `:dev-container` preset (custom managers for the version-pinned Dockerfile tool ARGs). It raises PRs for:
 
 - GitHub Actions (`uses:` pins in workflows)
 - Pre-commit hook revisions (`.pre-commit-config.yaml`)
@@ -131,6 +131,6 @@ Renovate will auto-approve and auto-merge PRs (squash) once the `ci-pre-commit` 
 
 For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` requiring the CI status check. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run.
 
-Configure both in one step with `make protect-branch` (wraps [scripts/protect-branch.sh](scripts/protect-branch.sh)). It requires a `gh` CLI authenticated with admin rights on the repo, and it: enables repository auto-merge and delete-branch-on-merge; clears any existing rulesets; then creates a ruleset requiring PR approval and the given status checks, while letting the repo admin and the Renovate app bypass both. Override the branch and required checks via `make protect-branch BRANCH=main CHECKS="pre-commit / Pre-commit"` (checks are newline-separated when passing more than one), or the repo/approval count via the `REPO`/`APPROVALS_REQUIRED` env vars — see the script header.
+Configure both in one step with `make protect-branch` (wraps [scripts/protect-branch.sh](scripts/protect-branch.sh)). It requires a `gh` CLI authenticated with admin rights on the repo, and it: enables repository auto-merge and delete-branch-on-merge; clears any existing rulesets; then creates a ruleset requiring the given status checks (plus, where applicable, PR approval), while letting the repo admin and the Renovate app bypass both. The required-review count defaults to 1 on organisation-owned repos but **0 on user-owned repos** — GitHub silently ignores ruleset bypass actors on personal repos, so requiring a review there would block Renovate's own PRs forever (status checks and the direct-push block still apply either way). Override the branch and required checks via `make protect-branch BRANCH=main CHECKS="pre-commit / Pre-commit"` (checks are newline-separated when passing more than one), or the repo/approval count via the `REPO`/`APPROVALS_REQUIRED` env vars — see the script header.
 
 To enable it, install the [Renovate GitHub App](https://github.com/apps/renovate) on the repository.
