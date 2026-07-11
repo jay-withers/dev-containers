@@ -113,7 +113,7 @@ make lint    # run all hooks against every file
 | `ci-container-build` | PRs that change `images/**`               | Builds base, terraform, and k8s images for `linux/arm64` via QEMU and smoke-tests each tool          |
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag and builds/publishes every image to GHCR as that version and `latest`             |
-| `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Resolves the latest release tag and re-publishes it via `cd-publish` to pick up base OS patches      |
+| `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |
 
 ## Dependency updates
 
