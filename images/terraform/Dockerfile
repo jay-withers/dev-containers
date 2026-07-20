@@ -4,9 +4,9 @@ FROM ${BASE_IMAGE}
 
 # Renovate bumps the version tag in these URLs; each download is verified at
 # build time against the checksum the upstream project publishes for that version.
-ARG CHECKOV_URL="https://github.com/bridgecrewio/checkov/releases/download/3.3.6/checkov_linux_arm64.zip"
+ARG CHECKOV_URL="https://github.com/bridgecrewio/checkov/releases/download/3.3.8/checkov_linux_arm64.zip"
 ARG TERRAFORM_DOCS_URL="https://github.com/terraform-docs/terraform-docs/releases/download/v0.24.0/terraform-docs-v0.24.0-linux-arm64.tar.gz"
-ARG TFLINT_URL="https://github.com/terraform-linters/tflint/releases/download/v0.63.1/tflint_linux_arm64.zip"
+ARG TFLINT_URL="https://github.com/terraform-linters/tflint/releases/download/v0.64.0/tflint_linux_arm64.zip"
 
 USER root
 

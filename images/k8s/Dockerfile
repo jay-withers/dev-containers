@@ -4,7 +4,7 @@ FROM ${BASE_IMAGE}
 
 # Renovate bumps the version tag in these URLs; each download is verified at
 # build time against the checksum the upstream project publishes for that version.
-ARG HELM_URL="https://get.helm.sh/helm-v4.2.2-linux-arm64.tar.gz"
+ARG HELM_URL="https://get.helm.sh/helm-v4.2.3-linux-arm64.tar.gz"
 ARG K9S_URL="https://github.com/derailed/k9s/releases/download/v0.51.0/k9s_Linux_arm64.tar.gz"
 ARG KUBECTL_URL="https://dl.k8s.io/release/v1.36.2/bin/linux/arm64/kubectl"
 # kubectx is not tracked by Renovate, so it stays pinned to a specific
