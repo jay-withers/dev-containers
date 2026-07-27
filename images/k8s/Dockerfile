@@ -6,7 +6,7 @@ FROM ${BASE_IMAGE}
 # build time against the checksum the upstream project publishes for that version.
 ARG HELM_URL="https://get.helm.sh/helm-v4.2.3-linux-arm64.tar.gz"
 ARG K9S_URL="https://github.com/derailed/k9s/releases/download/v0.51.0/k9s_Linux_arm64.tar.gz"
-ARG KUBECTL_URL="https://dl.k8s.io/release/v1.36.2/bin/linux/arm64/kubectl"
+ARG KUBECTL_URL="https://dl.k8s.io/release/v1.36.3/bin/linux/arm64/kubectl"
 # kubectx is not tracked by Renovate, so it stays pinned to a specific
 # @sha256: digest that is bumped by hand.
 ARG KUBECTX_URL="https://github.com/ahmetb/kubectx/releases/download/v0.11.0/kubectx_v0.11.0_linux_arm64.tar.gz@sha256:1dac2072216689e773325cb7587b858ea7415706ebcf04e23bf80e7e70555340"
