@@ -2,6 +2,11 @@ name: cd-publish
 
 # Builds and publishes every image to GHCR for a given tag. Invoked by cd-tag
 # after a version bump, or manually to (re)publish an existing tag.
+#
+# Each image is built for linux/amd64 and linux/arm64 on a native runner of that
+# architecture (so no QEMU emulation) and pushed by digest with no tag attached.
+# A follow-up merge job then combines the per-architecture digests into a single
+# multi-arch manifest list, published under both the version and latest tags.
 on:
   workflow_call:
     inputs:
@@ -25,15 +30,20 @@ env:
 
 jobs:
   base:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.version }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
@@ -45,32 +55,138 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push base image
+      - name: Build and push base image for linux/${{ matrix.arch }}
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: images/base
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/base:latest
-            ${{ env.REGISTRY }}/${{ github.repository }}/base:${{ inputs.version }}
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/base,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=base-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=base-${{ matrix.arch }}
 
-  leaves:
+      # The merge job needs every architecture's digest. Artifacts are the only
+      # way to get a value out of one matrix leg and into a later job, so each
+      # leg writes an empty file named after its digest.
+      - name: Record digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: digests-base-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  base-merge:
     needs: base
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: /tmp/digests
+          pattern: digests-base-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifest for base
+        working-directory: /tmp/digests
+        run: |
+          image="${{ env.REGISTRY }}/${{ github.repository }}/base"
+          refs=()
+          for digest in *; do refs+=("${image}@sha256:${digest}"); done
+          docker buildx imagetools create \
+            --tag "${image}:${{ inputs.version }}" \
+            --tag "${image}:latest" \
+            "${refs[@]}"
+          docker buildx imagetools inspect "${image}:${{ inputs.version }}"
+
+  # Leaf images build FROM the freshly published multi-arch base at the same
+  # version, so each native runner resolves the base for its own architecture.
+  leaves:
+    needs: base-merge
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [terraform, k8s]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.version }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.image }} image for linux/${{ matrix.arch }}
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: images/${{ matrix.image }}
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/base:${{ inputs.version }}
+          secrets: |
+            gh_token=${{ secrets.GITHUB_TOKEN }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
+
+      - name: Record digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  leaves-merge:
+    needs: leaves
     runs-on: ubuntu-24.04
     strategy:
       matrix:
         image: [terraform, k8s]
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Download digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          ref: ${{ inputs.version }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
@@ -82,18 +198,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.image }} image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: images/${{ matrix.image }}
-          platforms: linux/arm64
-          push: true
-          build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/base:${{ inputs.version }}
-          secrets: |
-            gh_token=${{ secrets.GITHUB_TOKEN }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:latest
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:${{ inputs.version }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      - name: Create multi-arch manifest for ${{ matrix.image }}
+        working-directory: /tmp/digests
+        run: |
+          image="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}"
+          refs=()
+          for digest in *; do refs+=("${image}@sha256:${digest}"); done
+          docker buildx imagetools create \
+            --tag "${image}:${{ inputs.version }}" \
+            --tag "${image}:latest" \
+            "${refs[@]}"
+          docker buildx imagetools inspect "${image}:${{ inputs.version }}"
