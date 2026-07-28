@@ -7,16 +7,27 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0
 # ensures correct handling of non-ASCII output. C.UTF-8 needs no locale-gen.
 ENV LANG=C.UTF-8
 
+# Set automatically by BuildKit to the architecture being built for (amd64 or
+# arm64). The downloads below are architecture-specific: each URL is written
+# with the arm64 asset name, and the install step rewrites that token to
+# whatever the upstream project calls the architecture being built. Keeping the
+# version in a literal URL is what lets Renovate's custom managers find it.
+ARG TARGETARCH
+
 # azure-cli is not tracked by Renovate (no upstream checksum file), so it stays
-# pinned to a specific @sha256: digest that is bumped by hand.
-ARG AZURE_CLI_URL="https://packages.microsoft.com/repos/azure-cli/pool/main/a/azure-cli/azure-cli_2.73.0-1~noble_arm64.deb@sha256:6af9009a39895ba396e92d5138824091e95f9bd797422db2fe9564a0cf4a35f4"
+# pinned to a specific @sha256: digest that is bumped by hand. The .deb differs
+# per architecture, so each architecture carries its own URL and digest.
+ARG AZURE_CLI_URL_AMD64="https://packages.microsoft.com/repos/azure-cli/pool/main/a/azure-cli/azure-cli_2.73.0-1~noble_amd64.deb@sha256:26b28de55fbc8a397af9bcb0f44c15615943cce0675ae40095bc68bd66acdf6b"
+ARG AZURE_CLI_URL_ARM64="https://packages.microsoft.com/repos/azure-cli/pool/main/a/azure-cli/azure-cli_2.73.0-1~noble_arm64.deb@sha256:6af9009a39895ba396e92d5138824091e95f9bd797422db2fe9564a0cf4a35f4"
 # ble.sh (interactive-shell inline autosuggestions) publishes no checksum file
 # either, so like azure-cli it stays pinned to a hand-maintained @sha256: digest.
+# It ships as a single architecture-independent source tarball.
 ARG BLESH_URL="https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-devel3/ble-0.4.0-devel3.tar.xz@sha256:c8612ee612bc6b10dbfd6e85c6cbdfd7caf152a12d1f9de22ea0a9d735b3080c"
 # Renovate bumps the version tag in these URLs; each download is verified at
 # build time against the checksum the upstream project publishes for that version.
 ARG GH_URL="https://github.com/cli/cli/releases/download/v2.96.0/gh_2.96.0_linux_arm64.tar.gz"
 ARG NODE_URL="https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-arm64.tar.xz"
+# pre-commit ships a single architecture-independent .pyz zipapp.
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v3.8.0/pre-commit-3.8.0.pyz"
 
 # Base dependencies and general-purpose CLI tools.
@@ -30,8 +41,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # azure-cli — verified against its hand-pinned SHA256 digest
-RUN URL="${AZURE_CLI_URL%@sha256:*}" \
-    && SHA="${AZURE_CLI_URL##*@sha256:}" \
+RUN case "${TARGETARCH}" in \
+        amd64) SPEC="${AZURE_CLI_URL_AMD64}" ;; \
+        arm64) SPEC="${AZURE_CLI_URL_ARM64}" ;; \
+        *) echo "unsupported TARGETARCH '${TARGETARCH}' (expected amd64 or arm64)" >&2; exit 1 ;; \
+    esac \
+    && URL="${SPEC%@sha256:*}" \
+    && SHA="${SPEC##*@sha256:}" \
     && curl -fsSL "${URL}" -o /tmp/azure-cli.deb \
     && (cd /tmp && echo "${SHA}  azure-cli.deb" | sha256sum -c) \
     && apt-get update && apt-get install -y --no-install-recommends /tmp/azure-cli.deb \
@@ -48,19 +64,32 @@ RUN FILE="${PRE_COMMIT_URL##*/}" \
     && rm "/tmp/${FILE}" /tmp/pre-commit.sha256sum \
     && pre-commit --version
 
-# node — verified against the release's SHASUMS256.txt
-RUN FILE="${NODE_URL##*/}" \
-    && curl -fsSL "${NODE_URL}" -o "/tmp/${FILE}" \
-    && curl -fsSL "${NODE_URL%/*}/SHASUMS256.txt" -o /tmp/SHASUMS256.txt \
+# node — verified against the release's SHASUMS256.txt, which covers every
+# architecture in one file. Node names its x86-64 build "x64", not "amd64".
+RUN case "${TARGETARCH}" in \
+        amd64) ARCH="x64" ;; \
+        arm64) ARCH="arm64" ;; \
+        *) echo "unsupported TARGETARCH '${TARGETARCH}' (expected amd64 or arm64)" >&2; exit 1 ;; \
+    esac \
+    && URL="$(printf '%s' "${NODE_URL}" | sed "s/linux-arm64/linux-${ARCH}/")" \
+    && FILE="${URL##*/}" \
+    && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
+    && curl -fsSL "${URL%/*}/SHASUMS256.txt" -o /tmp/SHASUMS256.txt \
     && (cd /tmp && sha256sum --ignore-missing -c SHASUMS256.txt) \
     && tar -xJ -C /usr/local --strip-components=1 -f "/tmp/${FILE}" \
     && rm "/tmp/${FILE}" /tmp/SHASUMS256.txt \
     && node --version
 
-# gh (GitHub CLI) — verified against the release's checksums.txt
-RUN FILE="${GH_URL##*/}" \
-    && curl -fsSL "${GH_URL}" -o "/tmp/${FILE}" \
-    && curl -fsSL "${GH_URL%/*}/${FILE%_linux_arm64.tar.gz}_checksums.txt" -o /tmp/gh.checksums.txt \
+# gh (GitHub CLI) — verified against the release's checksums.txt, which covers
+# every architecture in one file.
+RUN case "${TARGETARCH}" in \
+        amd64|arm64) ARCH="${TARGETARCH}" ;; \
+        *) echo "unsupported TARGETARCH '${TARGETARCH}' (expected amd64 or arm64)" >&2; exit 1 ;; \
+    esac \
+    && URL="$(printf '%s' "${GH_URL}" | sed "s/linux_arm64/linux_${ARCH}/")" \
+    && FILE="${URL##*/}" \
+    && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
+    && curl -fsSL "${URL%/*}/${FILE%%_linux_*}_checksums.txt" -o /tmp/gh.checksums.txt \
     && (cd /tmp && sha256sum --ignore-missing -c gh.checksums.txt) \
     && tar -xz -C /usr/local/bin --strip-components=2 -f "/tmp/${FILE}" "${FILE%.tar.gz}/bin/gh" \
     && rm "/tmp/${FILE}" /tmp/gh.checksums.txt \

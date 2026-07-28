@@ -4,13 +4,15 @@ A catalog of VS Code dev container images for Azure infrastructure development. 
 
 ## Available images
 
-| Image       | Registry path                                 | Tooling on top of base                                |
-| ----------- | --------------------------------------------- | ----------------------------------------------------- |
-| `base`      | `ghcr.io/jay-withers/dev-container/base`      | Azure CLI, Node.js, pre-commit, general CLI utilities |
-| `terraform` | `ghcr.io/jay-withers/dev-container/terraform` | + tflint, checkov, terraform-docs, tfenv              |
-| `k8s`       | `ghcr.io/jay-withers/dev-container/k8s`       | + kubectl, kubectx, helm, k9s                         |
+| Image       | Registry path                                  | Tooling on top of base                                |
+| ----------- | ---------------------------------------------- | ----------------------------------------------------- |
+| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, pre-commit, general CLI utilities |
+| `terraform` | `ghcr.io/jay-withers/dev-containers/terraform` | + tflint, checkov, terraform-docs, tfenv              |
+| `k8s`       | `ghcr.io/jay-withers/dev-containers/k8s`       | + kubectl, kubectx, helm, k9s                         |
 
 Each specialised image is built `FROM` the base image, so common tooling stays in one place.
+
+Every image is published as a multi-arch manifest covering `linux/amd64` and `linux/arm64`, so the same tag works on Apple Silicon, x86 laptops, and GitHub Codespaces alike — Docker resolves the right architecture automatically.
 
 ## Using an image in another repo
 
@@ -18,7 +20,7 @@ Add a `.devcontainer/devcontainer.json` that references the published image:
 
 ```json
 {
-  "image": "ghcr.io/jay-withers/dev-container/terraform:latest",
+  "image": "ghcr.io/jay-withers/dev-containers/terraform:latest",
   "customizations": {
     "vscode": {
       "extensions": []
@@ -32,13 +34,13 @@ For the `terraform` image, pin a Terraform version by adding a `.terraform-versi
 To pin to a specific image version rather than `latest`, use a semver tag:
 
 ```json
-"image": "ghcr.io/jay-withers/dev-container/terraform:v1.2.3"
+"image": "ghcr.io/jay-withers/dev-containers/terraform:v1.2.3"
 ```
 
 ## Prerequisites (for local use)
 
 - [Docker](https://www.docker.com/get-started/) installed and running
-- An `arm64` host — all images pin `arm64` binaries and CI only builds `linux/arm64`, so `make build` will fail on an `amd64` machine
+- An `amd64` or `arm64` host — `make build` builds for the host architecture, which BuildKit reports to the Dockerfiles as `TARGETARCH`
 
 ## Repository layout
 
@@ -53,7 +55,9 @@ Makefile                 # setup / lint / build targets (run `make help`)
 
 ## Tooling versions
 
-All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, which publishes no checksum file, is verified against the SHA256 digest reported by the GitHub release API). Azure CLI, kubectx, and ble.sh have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
+All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, which publishes no checksum file, is verified against the SHA256 digest reported by the GitHub release API). Azure CLI and ble.sh have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest — and because the Azure CLI `.deb` differs per architecture, it carries one URL and digest per architecture. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
+
+Each tool ARG holds the URL of the `arm64` asset, and the install step rewrites that architecture token to match the architecture being built (read from BuildKit's `TARGETARCH`). Upstream naming is not consistent — Node publishes `x64`, kubectx publishes `x86_64`, and checkov publishes `X86_64`, where most projects use `amd64` — so those tools map the token explicitly. Keeping the version in a literal URL is what lets Renovate's custom managers find and bump it.
 
 The base image also installs a set of general-purpose CLI utilities from Ubuntu's apt repositories (apt verifies these itself, so they carry no version pin): DNS/network tools (`dig`, `nslookup`, `host`, `ping`, `traceroute`, `nc`), plus `jq`, `wget`, `rsync`, `zip`, `file`, `tree`, `vim`, `nano`, and `less`.
 
@@ -113,9 +117,9 @@ make lint    # run all hooks against every file
 | Workflow             | When it runs                              | What it does                                                                                         |
 | -------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ci-pre-commit`      | Every PR to `main`                        | Installs all tools and runs `pre-commit run --all-files` to validate hooks                           |
-| `ci-container-build` | PRs that change `images/**`               | Builds base, terraform, and k8s images for `linux/arm64` via QEMU and smoke-tests each tool          |
+| `ci-container-build` | PRs that change `images/**`               | Builds base, terraform, and k8s for `linux/amd64` and `linux/arm64` on native runners, then smoke-tests each tool on each architecture |
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
-| `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag and builds/publishes every image to GHCR as that version and `latest`             |
+| `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |
 
 ## Dependency updates
