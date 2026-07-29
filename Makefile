@@ -1,9 +1,12 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint build build-base build-terraform build-k8s protect-branch
+.PHONY: help setup lint build build-base build-terraform build-k8s protect-branch prune-packages
 
 BRANCH ?= main
 CHECKS ?= pre-commit / Pre-commit
+KEEP ?= 10
+PR_MAX_AGE_DAYS ?= 7
+DRY_RUN ?= true
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -28,3 +31,6 @@ build-k8s: build-base ## Build the k8s image (FROM base)
 
 protect-branch: ## Configure repo auto-merge + branch protection ruleset via gh (args: BRANCH, CHECKS)
 	./scripts/protect-branch.sh "$(BRANCH)" "$(CHECKS)"
+
+prune-packages: ## Prune old image versions from GHCR (args: KEEP, PR_MAX_AGE_DAYS, DRY_RUN - defaults to a dry run)
+	KEEP="$(KEEP)" PR_MAX_AGE_DAYS="$(PR_MAX_AGE_DAYS)" DRY_RUN="$(DRY_RUN)" ./scripts/prune-packages.sh

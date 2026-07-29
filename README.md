@@ -50,6 +50,7 @@ images/
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
   k8s/Dockerfile         # FROM base + kubectl, kubectx, helm, k9s
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
+scripts/                 # one-off / scheduled repo admin scripts (branch protection, GHCR pruning)
 Makefile                 # setup / lint / build targets (run `make help`)
 ```
 
@@ -121,6 +122,33 @@ make lint    # run all hooks against every file
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |
+| `cd-prune`           | Mondays 08:00 UTC, or run manually        | Prunes old image versions and spent CI PR tags from GHCR (see below)                                 |
+
+## Registry retention
+
+Because `cd-weekly` mints a new patch version every Monday, each package would otherwise gain a version a week indefinitely. `cd-prune` runs two hours after that publish and prunes the backlog by calling [scripts/prune-packages.sh](scripts/prune-packages.sh), which keeps:
+
+- the **10 most recent release versions** (tags matching `vMAJOR.MINOR.PATCH`) of every image, ordered by semver
+- the throwaway **`pr-<run_id>-<arch>` tags** that `ci-container-build` pushes, until they are **7 days old**. They are only needed for the minutes between one CI run's base and leaf jobs, but the age floor means a prune landing mid-run can't pull the base image out from under a leaf job still building `FROM` it
+- **every version carrying any other tag** — `latest`, anything applied by hand. Unrecognised tags are never touched
+- the **untagged per-architecture child manifests** of each kept version
+
+Everything else goes: release versions past the 10 most recent, expired PR tags, and untagged manifests that no kept version references (the per-architecture children of the versions being deleted, and leftovers from publish runs that pushed by digest and then failed before merging a manifest).
+
+A version is only deleted when *every* tag on it is expendable — GHCR can delete a version but not an individual tag, so a PR build that happens to reproduce a release digest (both tags landing on one version) keeps that version alive until the release itself ages out.
+
+That last point is why this is a script rather than an off-the-shelf "delete untagged versions" action. `cd-publish` pushes each architecture by digest with no tag, so every published version has untagged children in GHCR that its tagged manifest points at — deleting untagged versions indiscriminately breaks multi-arch manifests that are still tagged and in use. The script reads each kept version's children back out of the registry and excludes them, and if any of those manifests can't be read it skips untagged pruning for that image and exits non-zero rather than guessing.
+
+Preview a prune, or run one by hand:
+
+```sh
+make prune-packages                            # dry run (the default): report what would be deleted
+make prune-packages DRY_RUN=false              # actually delete
+make prune-packages KEEP=20 DRY_RUN=false      # keep more history
+make prune-packages PR_MAX_AGE_DAYS=1          # sweep PR tags sooner
+```
+
+The workflow takes the same `keep`, `pr_max_age_days`, and `dry_run` values as `workflow_dispatch` inputs. Deletion uses the repo's `GITHUB_TOKEN`, which is sufficient for packages scoped to this repo; if that ever stops being true, add a `PACKAGES_TOKEN` secret (a PAT with `delete:packages`) and the workflow uses it instead. Note that GitHub refuses to delete any version of a **public** package once it has more than 5,000 downloads — that shows up as a delete failure the job reports and fails on, and can only be resolved via GitHub support.
 
 ## Dependency updates
 
