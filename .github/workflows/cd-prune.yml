@@ -1,0 +1,52 @@
+name: cd-prune
+
+# Prunes old versions of the published images from GHCR. cd-weekly mints a new
+# patch version every Monday, so without this each package gains a version a
+# week indefinitely.
+#
+# Runs after the weekly rebuild has published (cd-weekly is 06:00 Monday), so
+# the version it just created is always among the ones kept. Safe to re-run, and
+# `dry_run` reports what would go without deleting anything.
+on:
+  schedule:
+    # 08:00 UTC every Monday
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: Release versions to keep per image
+        required: false
+        type: string
+        default: "10"
+      pr_max_age_days:
+        description: Age at which a CI pr-<run_id>-<arch> tag becomes prunable
+        required: false
+        type: string
+        default: "7"
+      dry_run:
+        description: Report what would be deleted without deleting it
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Prune old package versions
+        env:
+          # GITHUB_TOKEN can delete versions of packages scoped to this repo. If
+          # a package ever ends up owned outside that scope, add a PACKAGES_TOKEN
+          # secret (a PAT with delete:packages) and it is used instead.
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          KEEP: ${{ inputs.keep || '10' }}
+          PR_MAX_AGE_DAYS: ${{ inputs.pr_max_age_days || '7' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: ./scripts/prune-packages.sh
