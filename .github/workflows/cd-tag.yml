@@ -10,7 +10,7 @@ jobs:
   tag:
     permissions:
       contents: write
-    uses: jay-withers/template-pipelines/.github/workflows/release.yml@82bf7984120a33073aae075309b09afad91e960b # v0.2.1
+    uses: jay-withers/template-pipelines/.github/workflows/release.yml@492843dcd47b10f45ad3ee533781c484c6e07f3c # v0.2.3
 
   # Publish runs as a reusable workflow so the same job can be re-triggered
   # manually (workflow_dispatch) against an existing tag if a build fails,
