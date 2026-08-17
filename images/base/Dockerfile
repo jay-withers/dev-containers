@@ -25,8 +25,8 @@ ARG AZURE_CLI_URL_ARM64="https://packages.microsoft.com/repos/azure-cli/pool/mai
 ARG BLESH_URL="https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-devel3/ble-0.4.0-devel3.tar.xz@sha256:c8612ee612bc6b10dbfd6e85c6cbdfd7caf152a12d1f9de22ea0a9d735b3080c"
 # Renovate bumps the version tag in these URLs; each download is verified at
 # build time against the checksum the upstream project publishes for that version.
-ARG GH_URL="https://github.com/cli/cli/releases/download/v2.96.0/gh_2.96.0_linux_arm64.tar.gz"
-ARG NODE_URL="https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-arm64.tar.xz"
+ARG GH_URL="https://github.com/cli/cli/releases/download/v2.97.0/gh_2.97.0_linux_arm64.tar.gz"
+ARG NODE_URL="https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-arm64.tar.xz"
 # pre-commit ships a single architecture-independent .pyz zipapp.
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v3.8.0/pre-commit-3.8.0.pyz"
 
