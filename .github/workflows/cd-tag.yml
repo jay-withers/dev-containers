@@ -18,9 +18,13 @@ jobs:
   publish:
     needs: tag
     if: needs.tag.outputs.tag != ''
+    # issues: write is for the scan report cd-publish posts at the end. A
+    # nested reusable workflow can only ever narrow what its caller grants, so
+    # the permission has to be handed down from here.
     permissions:
       contents: read
       packages: write
+      issues: write
     uses: ./.github/workflows/cd-publish.yml
     with:
       version: ${{ needs.tag.outputs.tag }}

@@ -1,16 +1,19 @@
 name: cd-scan
 
-# Scans the published images for known vulnerabilities and reports what it
-# finds — it never fails on a finding. A CVE disclosure is not something this
-# repo can fix by failing a build: the fix is a package upgrade or an upstream
-# base refresh, which is what cd-weekly already does. So this reports, and
-# leaves the decision to a human.
+# Scans published images for known vulnerabilities and reports what it finds —
+# it never fails on a finding. A CVE disclosure is not something this repo can
+# fix by failing a build: the fix is a package upgrade or a base refresh, which
+# is what cd-weekly already does. So this reports, and leaves the decision to a
+# human.
 #
-# Runs on Monday at 07:00 UTC, in the gap between cd-weekly publishing the
-# week's rebuild (06:00) and cd-prune sweeping old versions (08:00), so the
-# report describes the images that were just published. If a publish overruns,
-# the scan reports on the previous `latest` — the report states the tag and the
-# time it was taken.
+# Runs as the last stage of cd-publish, against the version that was just
+# published, so every report describes an exact, immutable tag rather than
+# whatever `latest` happened to point at when a timer fired. Because cd-weekly
+# publishes a rebuild every Monday, that also guarantees a report at least
+# weekly even in a week with no merges.
+#
+# Also callable on its own (workflow_dispatch) to scan any published tag without
+# republishing anything.
 #
 # The report goes to the run summary and to a tracked GitHub issue. The issue is
 # what generates the email: GitHub notifies subscribers when an issue is opened
@@ -19,13 +22,17 @@ name: cd-scan
 # notification, which is why both happen. Close the issue and the next run opens
 # a fresh one.
 on:
-  schedule:
-    # 07:00 UTC every Monday
-    - cron: "0 7 * * 1"
+  workflow_call:
+    inputs:
+      tag:
+        description: Published image tag to scan (e.g. v1.2.3)
+        required: false
+        default: latest
+        type: string
   workflow_dispatch:
     inputs:
       tag:
-        description: Image tag to scan (e.g. latest, v1.2.3)
+        description: Published image tag to scan (e.g. latest, v1.2.3)
         required: false
         default: latest
         type: string
@@ -63,10 +70,13 @@ jobs:
       # A finding never fails this step. A scan that could not run does, which
       # is why the steps below are always() — a partial report is still worth
       # sending, and the failed step is what marks the job (and emails you).
+      # When this runs from cd-publish the images are already published by the
+      # time it starts, so a red job here means the report failed, never that
+      # the release did.
       - name: Scan the published images
         env:
           REPO: ${{ github.repository }}
-          TAG: ${{ inputs.tag || 'latest' }}
+          TAG: ${{ inputs.tag }}
         run: ./scripts/scan-images.sh > report.md
 
       - name: Add the report to the run summary

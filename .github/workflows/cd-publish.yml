@@ -209,3 +209,18 @@ jobs:
             --tag "${image}:latest" \
             "${refs[@]}"
           docker buildx imagetools inspect "${image}:${{ inputs.version }}"
+
+  # Report the vulnerabilities in what was just published. Runs last and gates
+  # nothing: every image is already tagged and pullable by the time it starts,
+  # so a failure here means the report failed, not the release. Scanning the
+  # version tag rather than `latest` ties each report to an exact, immutable
+  # artifact.
+  scan:
+    needs: leaves-merge
+    permissions:
+      contents: read
+      packages: read
+      issues: write
+    uses: ./.github/workflows/cd-scan.yml
+    with:
+      tag: ${{ inputs.version }}
