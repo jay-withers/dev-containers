@@ -33,7 +33,27 @@ ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v
 # Base dependencies and general-purpose CLI tools.
 # These come from Ubuntu's signed apt repositories, so apt verifies integrity
 # itself — no hand-pinned checksums needed (unlike the URL-based tools below).
-RUN apt-get update && apt-get install -y --no-install-recommends \
+#
+# The upgrade is what patches the packages the upstream base image already
+# ships. Nothing here pins an apt version, so without it those packages sit at
+# whatever version Microsoft's last build of the base had, however many security
+# advisories have landed since — installing alongside them doesn't move them.
+# That trades byte-identical rebuilds of a given commit for patched packages,
+# which for a dev container is the right way round; the URL-pinned tools below
+# are what keep the build reproducible where it matters.
+#
+# `upgrade` rather than `dist-upgrade`: it never removes a package or pulls in a
+# new one to satisfy a changed dependency. Anything held back for that reason
+# stays visible in the cd-scan report rather than being silently resolved by
+# uninstalling something.
+#
+# It costs image size: layers are additive, so the upgraded copies land on top
+# of the originals in the base image's own layers rather than replacing them —
+# measured at ~126MB uncompressed for the ~115 packages upgraded. That buys
+# patched apt packages, which for an image people develop in is worth it.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
         bash-completion curl unzip xz-utils python3 ca-certificates \
         bind9-dnsutils iputils-ping traceroute netcat-openbsd \
         jq wget rsync zip file tree \

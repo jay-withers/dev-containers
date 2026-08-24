@@ -1,0 +1,122 @@
+name: cd-scan
+
+# Scans the published images for known vulnerabilities and reports what it
+# finds — it never fails on a finding. A CVE disclosure is not something this
+# repo can fix by failing a build: the fix is a package upgrade or an upstream
+# base refresh, which is what cd-weekly already does. So this reports, and
+# leaves the decision to a human.
+#
+# Runs on Monday at 07:00 UTC, in the gap between cd-weekly publishing the
+# week's rebuild (06:00) and cd-prune sweeping old versions (08:00), so the
+# report describes the images that were just published. If a publish overruns,
+# the scan reports on the previous `latest` — the report states the tag and the
+# time it was taken.
+#
+# The report goes to the run summary and to a tracked GitHub issue. The issue is
+# what generates the email: GitHub notifies subscribers when an issue is opened
+# or commented on, so each run posts a comment (and refreshes the body so the
+# issue itself always shows the current state). Editing a body alone sends no
+# notification, which is why both happen. Close the issue and the next run opens
+# a fresh one.
+on:
+  schedule:
+    # 07:00 UTC every Monday
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to scan (e.g. latest, v1.2.3)
+        required: false
+        default: latest
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  issues: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Deliberately unpinned: a scanner is only as good as its newest
+      # detection logic, and no Renovate manager here bumps a version input, so
+      # a pin would silently go stale and quietly stop finding things. The
+      # report records the exact version it ran with.
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: latest
+
+      # The packages are public, so this is not strictly required — it just
+      # keeps the pulls authenticated and clear of anonymous rate limits.
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A finding never fails this step. A scan that could not run does, which
+      # is why the steps below are always() — a partial report is still worth
+      # sending, and the failed step is what marks the job (and emails you).
+      - name: Scan the published images
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || 'latest' }}
+        run: ./scripts/scan-images.sh > report.md
+
+      - name: Add the report to the run summary
+        if: always()
+        run: |
+          if [[ -s report.md ]]; then
+            cat report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The scan produced no report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Publish the report to the tracked issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          LABEL: vulnerability-report
+          TITLE: Container image vulnerability report
+          ASSIGNEE: ${{ github.repository_owner }}
+        run: |
+          if [[ ! -s report.md ]]; then
+            echo "No report to publish — the scan failed before writing one." >&2
+            exit 0
+          fi
+
+          # An issue body caps at 65,536 characters. The full report is in the
+          # run summary either way, so trim rather than fail the publish.
+          if (( $(wc -c < report.md) > 60000 )); then
+            head -c 59000 report.md > report.trimmed.md
+            printf '\n\n_Report trimmed to fit a GitHub issue. The full version is in the [workflow run summary](%s/%s/actions/runs/%s)._\n' \
+              "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}" >> report.trimmed.md
+            mv report.trimmed.md report.md
+          fi
+
+          gh label create "${LABEL}" \
+            --color FBCA04 \
+            --description "Automated vulnerability report for the published images" \
+            --force
+
+          number="$(gh issue list --label "${LABEL}" --state open --limit 1 --json number --jq '.[0].number // empty')"
+
+          if [[ -z "${number}" ]]; then
+            # Assigning is what puts it in the owner's inbox. On an org-owned
+            # repo the owner is not an assignable user, so fall back to an
+            # unassigned issue rather than losing the report entirely.
+            gh issue create --title "${TITLE}" --body-file report.md --label "${LABEL}" --assignee "${ASSIGNEE}" \
+              || gh issue create --title "${TITLE}" --body-file report.md --label "${LABEL}"
+          else
+            # The comment is the notification; the body edit keeps the issue
+            # itself showing the latest run rather than the first one.
+            gh issue comment "${number}" --body-file report.md
+            gh issue edit "${number}" --body-file report.md
+          fi
