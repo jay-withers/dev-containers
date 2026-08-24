@@ -1,12 +1,14 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint build build-base build-terraform build-k8s protect-branch prune-packages
+.PHONY: help setup lint build build-base build-terraform build-k8s protect-branch prune-packages scan-images
 
 BRANCH ?= main
 CHECKS ?= pre-commit / Pre-commit
 KEEP ?= 10
 PR_MAX_AGE_DAYS ?= 7
 DRY_RUN ?= true
+TAG ?= latest
+PLATFORMS ?= linux/amd64 linux/arm64
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -34,3 +36,6 @@ protect-branch: ## Configure repo auto-merge + branch protection ruleset via gh 
 
 prune-packages: ## Prune old image versions from GHCR (args: KEEP, PR_MAX_AGE_DAYS, DRY_RUN - defaults to a dry run)
 	KEEP="$(KEEP)" PR_MAX_AGE_DAYS="$(PR_MAX_AGE_DAYS)" DRY_RUN="$(DRY_RUN)" ./scripts/prune-packages.sh
+
+scan-images: ## Report vulnerabilities in the published images (args: TAG, PLATFORMS)
+	TAG="$(TAG)" PLATFORMS="$(PLATFORMS)" ./scripts/scan-images.sh
