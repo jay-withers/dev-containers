@@ -50,7 +50,7 @@ images/
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
   k8s/Dockerfile         # FROM base + kubectl, kubectx, helm, k9s
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
-scripts/                 # one-off / scheduled repo admin scripts (branch protection, GHCR pruning)
+scripts/                 # one-off / scheduled repo admin scripts (branch protection, GHCR pruning, image scanning)
 Makefile                 # setup / lint / build targets (run `make help`)
 ```
 
@@ -59,6 +59,10 @@ Makefile                 # setup / lint / build targets (run `make help`)
 All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, which publishes no checksum file, is verified against the SHA256 digest reported by the GitHub release API). Azure CLI and ble.sh have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest — and because the Azure CLI `.deb` differs per architecture, it carries one URL and digest per architecture. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
 
 Each tool ARG holds the URL of the `arm64` asset, and the install step rewrites that architecture token to match the architecture being built (read from BuildKit's `TARGETARCH`). Upstream naming is not consistent — Node publishes `x64`, kubectx publishes `x86_64`, and checkov publishes `X86_64`, where most projects use `amd64` — so those tools map the token explicitly. Keeping the version in a literal URL is what lets Renovate's custom managers find and bump it.
+
+The base image runs `apt-get upgrade` before installing anything, so the packages the upstream base image already ships are patched to whatever Ubuntu currently has. That is deliberately not reproducible — an apt package carries no version pin here, and leaving it unpinned *and* un-upgraded would freeze it at whatever version the upstream base was built with. The URL-pinned tools above are what make the build reproducible where it matters.
+
+It costs roughly 126MB of uncompressed image size: Docker layers are additive, so the upgraded copies of the ~115 packages involved sit on top of the originals in the upstream base's layers instead of replacing them. That is the price of patched apt packages in an image people develop in.
 
 The base image also installs a set of general-purpose CLI utilities from Ubuntu's apt repositories (apt verifies these itself, so they carry no version pin): DNS/network tools (`dig`, `nslookup`, `host`, `ping`, `traceroute`, `nc`), plus `jq`, `wget`, `rsync`, `zip`, `file`, `tree`, `vim`, `nano`, and `less`.
 
@@ -122,7 +126,49 @@ make lint    # run all hooks against every file
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |
+| `cd-scan`            | Mondays 07:00 UTC, or run manually        | Scans the published images for known vulnerabilities and reports the findings (see below)            |
 | `cd-prune`           | Mondays 08:00 UTC, or run manually        | Prunes old image versions and spent CI PR tags from GHCR (see below)                                 |
+
+## Vulnerability scanning
+
+`cd-scan` runs [Trivy](https://trivy.dev/) against the published images every Monday at 07:00 UTC — after `cd-weekly` publishes the week's rebuild, before `cd-prune` sweeps old versions — via [scripts/scan-images.sh](scripts/scan-images.sh). It scans the multi-arch manifest for both `linux/amd64` and `linux/arm64`, reading each platform's layers straight out of the registry, so both architectures are covered from one runner with nothing emulated and nothing executed.
+
+**It reports; it never fails on a finding.** Nothing here is gated on a CVE, so a disclosure can't block a publish or stall a Renovate auto-merge. That is a deliberate trade: the fix for a finding is a package upgrade or a base refresh, and a red build wouldn't produce either. A scan that *fails to run* does fail the job, because an incomplete report otherwise reads as "nothing found".
+
+The report goes two places:
+
+- the **workflow run summary**, in full
+- a **tracked GitHub issue** labelled `vulnerability-report`, which is what reaches your inbox. Each run posts a comment (GitHub emails subscribers on new issues and new comments, but *not* on body edits) and refreshes the issue body so the issue itself always shows the latest run. The first run assigns the issue to the repo owner, which is what subscribes you. Close the issue and the next run opens a fresh one — no secrets, no SMTP configuration.
+
+To get the email, GitHub notifications for **Issues** must be enabled on your account (Settings → Notifications → Subscriptions), which is the default for issues you're assigned to or participating in.
+
+Findings are deduplicated across platforms on (CVE, package) — both architectures install the same apt packages, so an undeduplicated count would double everything — and the report's *Platforms* column shows where each was seen. The detail table lists only **fixable HIGH/CRITICAL** findings — everything else is summarised numerically, because tabling several thousand MEDIUMs makes a report nobody reads. The table is capped at `MAX_ROWS` (200) per image, set above what these images actually carry so a normal run tables everything; the cap exists to stop a pathological result set producing an unreadable report, and the remainder is always reported as a count rather than dropped silently.
+
+### Kernel headers
+
+Ubuntu records every kernel CVE against `linux-libc-dev`, which on the current base accounts for the large majority of HIGH/CRITICAL findings. That package ships header files, not a kernel — a container uses the host's kernel — so none of those findings is reachable in these images. They are counted in their own column and excluded from the others rather than silently dropped. `IGNORE_PKGS` holds the list; set `IGNORE_PKGS=` to fold them back into the headline.
+
+### Reading a finding
+
+Fixable findings in these images come from three places, each with a different fix:
+
+- **apt packages.** The base image runs `apt-get upgrade` before installing anything, so these are patched to whatever Ubuntu currently ships as of the build — the weekly rebuild is what keeps that current. A finding surviving here means Ubuntu has published no fix, or the fix needs a package added or removed (`upgrade` won't do either; see the note in [images/base/Dockerfile](images/base/Dockerfile)).
+- **libraries vendored inside the pinned tool downloads** — Python packages inside the Azure CLI, npm packages inside Node, the Go standard library compiled into `gh`, `tflint`, and friends. These clear when Renovate bumps that tool's pinned URL.
+- **kernel headers**, as above — nothing to fix.
+
+Run a scan locally (needs `jq`, plus either `trivy` on `PATH` or Docker — the script falls back to running Trivy from a container):
+
+```sh
+make scan-images                                  # report on :latest for both architectures
+make scan-images TAG=v1.2.3                       # report on a specific published version
+make scan-images PLATFORMS=linux/arm64            # one architecture only
+./scripts/scan-images.sh > report.md              # report to a file, progress to the terminal
+IGNORE_PKGS= MAX_ROWS=500 make scan-images        # everything, kernel headers included
+```
+
+The script takes `REPO`, `TAG`, `PLATFORMS`, `IMAGES`, `IGNORE_PKGS`, `MAX_ROWS`, and `TRIVY_IMAGE` as environment overrides — see the header of [scripts/scan-images.sh](scripts/scan-images.sh). Images are discovered from the `images/` directory, so a new image is scanned with no change here. The workflow takes the image `tag` as a `workflow_dispatch` input.
+
+Trivy itself is intentionally installed at `latest` rather than pinned: no Renovate manager in this repo bumps an action's version input, so a pin would go stale and quietly stop detecting new CVEs. Each report records the exact Trivy version that produced it.
 
 ## Registry retention
 
