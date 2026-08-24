@@ -28,7 +28,7 @@ ARG BLESH_URL="https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-dev
 ARG GH_URL="https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_linux_arm64.tar.gz"
 ARG NODE_URL="https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-arm64.tar.xz"
 # pre-commit ships a single architecture-independent .pyz zipapp.
-ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v3.8.0/pre-commit-3.8.0.pyz"
+ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v4.6.2/pre-commit-4.6.2.pyz"
 
 # Base dependencies and general-purpose CLI tools.
 # These come from Ubuntu's signed apt repositories, so apt verifies integrity
