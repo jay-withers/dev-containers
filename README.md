@@ -126,12 +126,16 @@ make lint    # run all hooks against every file
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |
-| `cd-scan`            | Mondays 07:00 UTC, or run manually        | Scans the published images for known vulnerabilities and reports the findings (see below)            |
+| `cd-scan`            | Last stage of `cd-publish`, or manual     | Scans the images just published for known vulnerabilities and reports the findings (see below)       |
 | `cd-prune`           | Mondays 08:00 UTC, or run manually        | Prunes old image versions and spent CI PR tags from GHCR (see below)                                 |
 
 ## Vulnerability scanning
 
-`cd-scan` runs [Trivy](https://trivy.dev/) against the published images every Monday at 07:00 UTC — after `cd-weekly` publishes the week's rebuild, before `cd-prune` sweeps old versions — via [scripts/scan-images.sh](scripts/scan-images.sh). It scans the multi-arch manifest for both `linux/amd64` and `linux/arm64`, reading each platform's layers straight out of the registry, so both architectures are covered from one runner with nothing emulated and nothing executed.
+`cd-scan` runs [Trivy](https://trivy.dev/) via [scripts/scan-images.sh](scripts/scan-images.sh) as the **last stage of `cd-publish`**, against the version that was just published. It scans the multi-arch manifest for both `linux/amd64` and `linux/arm64`, reading each platform's layers straight out of the registry, so both architectures are covered from one runner with nothing emulated and nothing executed.
+
+Scanning at publish time rather than on a timer means every report describes an exact, immutable version tag rather than whatever `latest` pointed at when a schedule fired, and every release is covered — including a mid-week Renovate tool bump, which a weekly scan would not report until the following Monday. Because `cd-weekly` publishes a rebuild every Monday, a report still arrives at least weekly in a week with no merges. `cd-scan` is also callable on its own via `workflow_dispatch` with a `tag` input, to scan any published tag without republishing anything.
+
+It is the final job in the publish run and gates nothing: every image is tagged and pullable before it starts, so a red `scan` job means the report failed, never that the release did.
 
 **It reports; it never fails on a finding.** Nothing here is gated on a CVE, so a disclosure can't block a publish or stall a Renovate auto-merge. That is a deliberate trade: the fix for a finding is a package upgrade or a base refresh, and a red build wouldn't produce either. A scan that *fails to run* does fail the job, because an incomplete report otherwise reads as "nothing found".
 
