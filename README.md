@@ -4,11 +4,11 @@ A catalog of VS Code dev container images for Azure infrastructure development. 
 
 ## Available images
 
-| Image       | Registry path                                  | Tooling on top of base                                |
-| ----------- | ---------------------------------------------- | ----------------------------------------------------- |
-| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, pre-commit, general CLI utilities |
-| `terraform` | `ghcr.io/jay-withers/dev-containers/terraform` | + tflint, checkov, terraform-docs, tfenv              |
-| `k8s`       | `ghcr.io/jay-withers/dev-containers/k8s`       | + kubectl, kubectx, helm, k9s                         |
+| Image       | Registry path                                  | Tooling on top of base                                            |
+| ----------- | ---------------------------------------------- | ----------------------------------------------------------------- |
+| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, PowerShell, pre-commit, general CLI utilities |
+| `terraform` | `ghcr.io/jay-withers/dev-containers/terraform` | + tflint, checkov, terraform-docs, tfenv                          |
+| `k8s`       | `ghcr.io/jay-withers/dev-containers/k8s`       | + kubectl, kubectx, helm, k9s                                     |
 
 Each specialised image is built `FROM` the base image, so common tooling stays in one place.
 
@@ -46,7 +46,7 @@ To pin to a specific image version rather than `latest`, use a semver tag:
 
 ```text
 images/
-  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, pre-commit, general CLI utilities
+  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, PowerShell, pre-commit, general CLI utilities
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
   k8s/Dockerfile         # FROM base + kubectl, kubectx, helm, k9s
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
@@ -58,7 +58,7 @@ Makefile                 # setup / lint / build targets (run `make help`)
 
 All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, which publishes no checksum file, is verified against the SHA256 digest reported by the GitHub release API). Azure CLI and ble.sh have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest — and because the Azure CLI `.deb` differs per architecture, it carries one URL and digest per architecture. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
 
-Each tool ARG holds the URL of the `arm64` asset, and the install step rewrites that architecture token to match the architecture being built (read from BuildKit's `TARGETARCH`). Upstream naming is not consistent — Node publishes `x64`, kubectx publishes `x86_64`, and checkov publishes `X86_64`, where most projects use `amd64` — so those tools map the token explicitly. Keeping the version in a literal URL is what lets Renovate's custom managers find and bump it.
+Each tool ARG holds the URL of the `arm64` asset, and the install step rewrites that architecture token to match the architecture being built (read from BuildKit's `TARGETARCH`). Upstream naming is not consistent — Node and PowerShell publish `x64`, kubectx publishes `x86_64`, and checkov publishes `X86_64`, where most projects use `amd64` — so those tools map the token explicitly. Keeping the version in a literal URL is what lets Renovate's custom managers find and bump it.
 
 The base image runs `apt-get upgrade` before installing anything, so the packages the upstream base image already ships are patched to whatever Ubuntu currently has. That is deliberately not reproducible — an apt package carries no version pin here, and leaving it unpinned *and* un-upgraded would freeze it at whatever version the upstream base was built with. The URL-pinned tools above are what make the build reproducible where it matters.
 
@@ -73,6 +73,7 @@ Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, kubectl, helm
 | Azure CLI      | 2.73.0       | base      |
 | GitHub CLI     | 2.96.0       | base      |
 | Node.js        | 24.16.0      | base      |
+| PowerShell     | 7.6.5        | base      |
 | pre-commit     | 3.7.1        | base      |
 | ble.sh         | 0.4.0-devel3 | base      |
 | TFLint         | 0.61.0       | terraform |

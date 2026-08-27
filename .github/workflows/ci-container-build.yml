@@ -127,29 +127,32 @@ jobs:
             exit 1
           fi
 
+          # Base tools common to every image.
+          docker run --rm "$IMAGE" bash -c "
+            az --version && \
+            gh --version && \
+            node --version && \
+            pwsh --version && \
+            pre-commit --version && \
+            dig -v && \
+            jq --version
+          "
+
+          # Tooling the leaf image adds on top of base.
           if [ "${{ matrix.image }}" = "terraform" ]; then
             docker run --rm "$IMAGE" bash -c "
-              az --version && \
-              gh --version && \
-              node --version && \
-              pre-commit --version && \
-              dig -v && \
-              jq --version && \
               checkov --version && \
               tflint --version && \
               terraform-docs --version
             "
-          else
+          elif [ "${{ matrix.image }}" = "k8s" ]; then
             docker run --rm "$IMAGE" bash -c "
-              az --version && \
-              gh --version && \
-              node --version && \
-              pre-commit --version && \
-              dig -v && \
-              jq --version && \
               kubectl version --client && \
               helm version && \
               k9s version && \
               kubectx --version
             "
+          else
+            echo "no smoke test defined for image '${{ matrix.image }}'" >&2
+            exit 1
           fi

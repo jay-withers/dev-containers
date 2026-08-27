@@ -27,6 +27,7 @@ ARG BLESH_URL="https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-dev
 # build time against the checksum the upstream project publishes for that version.
 ARG GH_URL="https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_linux_arm64.tar.gz"
 ARG NODE_URL="https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-arm64.tar.xz"
+ARG PWSH_URL="https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-arm64.tar.gz"
 # pre-commit ships a single architecture-independent .pyz zipapp.
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v4.6.2/pre-commit-4.6.2.pyz"
 
@@ -99,6 +100,32 @@ RUN case "${TARGETARCH}" in \
     && tar -xJ -C /usr/local --strip-components=1 -f "/tmp/${FILE}" \
     && rm "/tmp/${FILE}" /tmp/SHASUMS256.txt \
     && node --version
+
+# pwsh (PowerShell) — verified against the release's hashes.sha256, which
+# covers every architecture in one file. Unlike the other checksum files here,
+# Microsoft publishes it as UTF-16 (with CRLF line endings), so it needs
+# converting to UTF-8 before sha256sum can parse it. Like node, PowerShell
+# names its x86-64 build "x64", not "amd64". The tarball has no top-level
+# directory (its contents, including the pwsh binary, sit at tarball root), so
+# it's extracted to Microsoft's documented install path and symlinked onto
+# PATH from there, rather than merged into /usr/local like node's tarball.
+RUN case "${TARGETARCH}" in \
+        amd64) ARCH="x64" ;; \
+        arm64) ARCH="arm64" ;; \
+        *) echo "unsupported TARGETARCH '${TARGETARCH}' (expected amd64 or arm64)" >&2; exit 1 ;; \
+    esac \
+    && URL="$(printf '%s' "${PWSH_URL}" | sed "s/linux-arm64/linux-${ARCH}/")" \
+    && FILE="${URL##*/}" \
+    && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
+    && curl -fsSL "${URL%/*}/hashes.sha256" -o /tmp/pwsh.hashes.sha256.utf16 \
+    && iconv -f UTF-16 -t UTF-8 /tmp/pwsh.hashes.sha256.utf16 > /tmp/pwsh.hashes.sha256 \
+    && (cd /tmp && sha256sum --ignore-missing -c pwsh.hashes.sha256) \
+    && mkdir -p /opt/microsoft/powershell/7 \
+    && tar -xz -C /opt/microsoft/powershell/7 -f "/tmp/${FILE}" \
+    && rm "/tmp/${FILE}" /tmp/pwsh.hashes.sha256 /tmp/pwsh.hashes.sha256.utf16 \
+    && chmod +x /opt/microsoft/powershell/7/pwsh \
+    && ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh \
+    && pwsh --version
 
 # gh (GitHub CLI) — verified against the release's checksums.txt, which covers
 # every architecture in one file.
