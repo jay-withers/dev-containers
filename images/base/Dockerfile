@@ -28,7 +28,9 @@ ARG BLESH_URL="https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-dev
 ARG GH_URL="https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_linux_arm64.tar.gz"
 ARG NODE_URL="https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-arm64.tar.xz"
 ARG PWSH_URL="https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-arm64.tar.gz"
-# pre-commit ships a single architecture-independent .pyz zipapp.
+# pre-commit ships a single architecture-independent .pyz zipapp. It stopped
+# publishing a .sha256sum alongside it after v4.4.0, so it's verified against
+# the GitHub API digest instead (see the install step below).
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v4.6.2/pre-commit-4.6.2.pyz"
 
 # Base dependencies and general-purpose CLI tools.
@@ -76,13 +78,22 @@ RUN case "${TARGETARCH}" in \
     && rm -rf /var/lib/apt/lists/* \
     && az --version
 
-# pre-commit — verified against the release's .pyz.sha256sum
-RUN FILE="${PRE_COMMIT_URL##*/}" \
-    && curl -fsSL "${PRE_COMMIT_URL}" -o "/tmp/${FILE}" \
-    && curl -fsSL "${PRE_COMMIT_URL}.sha256sum" -o /tmp/pre-commit.sha256sum \
-    && (cd /tmp && sha256sum --ignore-missing -c pre-commit.sha256sum) \
+# pre-commit — no upstream checksum file (dropped after v4.4.0), so verify
+# against the sha256 digest the GitHub API reports for the release asset. The
+# API call is authenticated when a gh_token secret is mounted (CI) to avoid
+# unauthenticated rate limits, and falls back to an anonymous request
+# otherwise (local builds).
+RUN --mount=type=secret,id=gh_token \
+    FILE="${PRE_COMMIT_URL##*/}"; \
+    TAG="${PRE_COMMIT_URL#*/download/}"; TAG="${TAG%%/*}"; \
+    API="https://api.github.com/repos/pre-commit/pre-commit/releases/tags/${TAG}"; \
+    TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || true)"; \
+    curl -fsSL "${PRE_COMMIT_URL}" -o "/tmp/${FILE}" \
+    && if [ -n "${TOKEN}" ]; then META="$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "${API}")"; else META="$(curl -fsSL "${API}")"; fi \
+    && SHA="$(printf '%s' "${META}" | python3 -c "import sys, json; print(next(a['digest'].split(':')[1] for a in json.load(sys.stdin)['assets'] if a['name'] == '${FILE}'))")" \
+    && (cd /tmp && echo "${SHA}  ${FILE}" | sha256sum -c) \
     && install -m 0755 "/tmp/${FILE}" /usr/local/bin/pre-commit \
-    && rm "/tmp/${FILE}" /tmp/pre-commit.sha256sum \
+    && rm "/tmp/${FILE}" \
     && pre-commit --version
 
 # node — verified against the release's SHASUMS256.txt, which covers every
