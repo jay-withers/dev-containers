@@ -62,6 +62,8 @@ jobs:
           context: images/base
           platforms: linux/${{ matrix.arch }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/base,push-by-digest=true,name-canonical=true,push=true
+          secrets: |
+            gh_token=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha,scope=base-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=base-${{ matrix.arch }}
 

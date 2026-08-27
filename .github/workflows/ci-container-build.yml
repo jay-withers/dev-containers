@@ -66,6 +66,8 @@ jobs:
           context: images/base
           platforms: linux/${{ matrix.arch }}
           push: true
+          secrets: |
+            gh_token=${{ secrets.GITHUB_TOKEN }}
           tags: ${{ env.BASE_REPO }}:pr-${{ github.run_id }}-${{ matrix.arch }}
           cache-from: type=gha,scope=base-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=base-${{ matrix.arch }}

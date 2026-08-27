@@ -76,13 +76,22 @@ RUN case "${TARGETARCH}" in \
     && rm -rf /var/lib/apt/lists/* \
     && az --version
 
-# pre-commit — verified against the release's .pyz.sha256sum
-RUN FILE="${PRE_COMMIT_URL##*/}" \
-    && curl -fsSL "${PRE_COMMIT_URL}" -o "/tmp/${FILE}" \
-    && curl -fsSL "${PRE_COMMIT_URL}.sha256sum" -o /tmp/pre-commit.sha256sum \
-    && (cd /tmp && sha256sum --ignore-missing -c pre-commit.sha256sum) \
+# pre-commit — no upstream checksum file (dropped after v4.4.0), so verify
+# against the sha256 digest the GitHub API reports for the release asset. The
+# API call is authenticated when a gh_token secret is mounted (CI) to avoid
+# unauthenticated rate limits, and falls back to an anonymous request
+# otherwise (local builds).
+RUN --mount=type=secret,id=gh_token \
+    FILE="${PRE_COMMIT_URL##*/}"; \
+    TAG="${PRE_COMMIT_URL#*/download/}"; TAG="${TAG%%/*}"; \
+    API="https://api.github.com/repos/pre-commit/pre-commit/releases/tags/${TAG}"; \
+    TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || true)"; \
+    curl -fsSL "${PRE_COMMIT_URL}" -o "/tmp/${FILE}" \
+    && if [ -n "${TOKEN}" ]; then META="$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "${API}")"; else META="$(curl -fsSL "${API}")"; fi \
+    && SHA="$(printf '%s' "${META}" | python3 -c "import sys, json; print(next(a['digest'].split(':')[1] for a in json.load(sys.stdin)['assets'] if a['name'] == '${FILE}'))")" \
+    && (cd /tmp && echo "${SHA}  ${FILE}" | sha256sum -c) \
     && install -m 0755 "/tmp/${FILE}" /usr/local/bin/pre-commit \
-    && rm "/tmp/${FILE}" /tmp/pre-commit.sha256sum \
+    && rm "/tmp/${FILE}" \
     && pre-commit --version
 
 # node — verified against the release's SHASUMS256.txt, which covers every
