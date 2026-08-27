@@ -50,7 +50,7 @@ images/
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
   k8s/Dockerfile         # FROM base + kubectl, kubectx, helm, k9s
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
-scripts/                 # one-off / scheduled repo admin scripts (branch protection, GHCR pruning, image scanning)
+scripts/                 # one-off / scheduled repo admin scripts (GHCR pruning, image scanning)
 Makefile                 # setup / lint / build targets (run `make help`)
 ```
 
@@ -211,8 +211,6 @@ The workflow takes the same `keep`, `pr_max_age_days`, and `dry_run` values as `
 
 Renovate will auto-approve and auto-merge PRs (squash) once the `ci-pre-commit` and `ci-container-build` workflows pass.
 
-For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` requiring the CI status check. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run.
-
-Configure both in one step with `make protect-branch` (wraps [scripts/protect-branch.sh](scripts/protect-branch.sh)). It requires a `gh` CLI authenticated with admin rights on the repo, and it: enables repository auto-merge and delete-branch-on-merge; clears any existing rulesets; then creates a ruleset requiring the given status checks (plus, where applicable, PR approval), while letting the repo admin and the Renovate app bypass both. The required-review count defaults to 1 on organisation-owned repos but **0 on user-owned repos** — GitHub silently ignores ruleset bypass actors on personal repos, so requiring a review there would block Renovate's own PRs forever (status checks and the direct-push block still apply either way). Override the branch and required checks via `make protect-branch BRANCH=main CHECKS="pre-commit / Pre-commit"` (checks are newline-separated when passing more than one), or the repo/approval count via the `REPO`/`APPROVALS_REQUIRED` env vars — see the script header.
+For platform (GitHub-native) auto-merge to engage, the repository must have **Allow auto-merge** enabled and a branch-protection rule on `main` requiring the CI status check. Without a protection rule, GitHub refuses to enable auto-merge and PRs sit until Renovate's next scheduled run. Both are configured for this repo via [jay-withers/github-repos](https://github.com/jay-withers/github-repos)'s Terraform root module (`terraform/ruleset.tf`), which manages branch protection and repo settings across every jay-withers repo.
 
 To enable it, install the [Renovate GitHub App](https://github.com/apps/renovate) on the repository.
