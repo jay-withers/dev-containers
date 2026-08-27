@@ -28,9 +28,7 @@ ARG BLESH_URL="https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-dev
 ARG GH_URL="https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_linux_arm64.tar.gz"
 ARG NODE_URL="https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-arm64.tar.xz"
 ARG PWSH_URL="https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-arm64.tar.gz"
-# pre-commit ships a single architecture-independent .pyz zipapp. It stopped
-# publishing a .sha256sum alongside it after v4.4.0, so it's verified against
-# the GitHub API digest instead (see the install step below).
+# pre-commit ships a single architecture-independent .pyz zipapp.
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v4.6.2/pre-commit-4.6.2.pyz"
 
 # Base dependencies and general-purpose CLI tools.

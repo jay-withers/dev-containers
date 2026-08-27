@@ -74,7 +74,7 @@ Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, kubectl, helm
 | GitHub CLI     | 2.96.0       | base      |
 | Node.js        | 24.16.0      | base      |
 | PowerShell     | 7.6.5        | base      |
-| pre-commit     | 4.6.2        | base      |
+| pre-commit     | 3.7.1        | base      |
 | ble.sh         | 0.4.0-devel3 | base      |
 | TFLint         | 0.61.0       | terraform |
 | Checkov        | 3.2.529      | terraform |
