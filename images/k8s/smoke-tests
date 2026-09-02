@@ -1,0 +1,11 @@
+# Commands run inside the k8s image to prove its tooling works, one per line.
+# Read by scripts/smoke-test.sh.
+#
+# Only what this image adds on top of base — the base image's own tooling is
+# covered by images/base/smoke-tests, in the job that builds it.
+#
+# kubectl is checked with --client: there is no cluster to reach here.
+kubectl version --client
+kubectx --version
+helm version
+k9s version

@@ -70,12 +70,15 @@ It needs root — hence `sudo`, which the `vscode` user has passwordless — and
 ```text
 images/
   base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, PowerShell, Docker CLI, pre-commit, general CLI utilities
-  base/docker-socket-setup.sh  # container-start helper that grants non-root access to the mounted Docker socket
+  base/smoke-tests       # commands proving the base tooling works (see Smoke tests below)
+  base/docker-socket-setup.sh  # container-start helper granting non-root access to the mounted Docker socket
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
+  terraform/smoke-tests  # commands proving what terraform adds on top of base
   k8s/Dockerfile         # FROM base + kubectl, kubectx, helm, k9s
+  k8s/smoke-tests        # commands proving what k8s adds on top of base
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
-scripts/                 # one-off / scheduled repo admin scripts (GHCR pruning, image scanning)
-Makefile                 # setup / lint / build targets (run `make help`)
+scripts/                 # smoke tests, plus scheduled repo admin (GHCR pruning, image scanning)
+Makefile                 # setup / lint / build / smoke-test targets (run `make help`)
 ```
 
 ## Tooling versions
@@ -145,12 +148,27 @@ make setup   # install the pre-commit git hooks
 make lint    # run all hooks against every file
 ```
 
+## Smoke tests
+
+Each image declares the commands that prove its tooling works in `images/<name>/smoke-tests` — one shell command per line, `#` comments allowed. [scripts/smoke-test.sh](scripts/smoke-test.sh) runs them inside the built image, and CI calls the same script, so what runs locally and what runs in CI cannot drift:
+
+```sh
+make build       # build the images first
+make smoke-test  # run every image's smoke tests against the local builds
+
+./scripts/smoke-test.sh base                          # one image, local tag
+./scripts/smoke-test.sh base ghcr.io/o/r/base:v1.2.3  # one image, explicit ref
+ARCH=arm64 ./scripts/smoke-test.sh base               # also assert the image's architecture
+```
+
+Each list holds **only what that image adds**: every image is smoke-tested by the job that builds it, so a failure names the image that actually broke and leaf images never re-test the base tooling they inherit. Images and their lists are discovered from `images/`, so a new image needs no change to the script or the workflow — just its `Dockerfile` and its `smoke-tests`. A missing `smoke-tests` file fails rather than passing silently, since an untested image would otherwise look identical to a passing one.
+
 ## CI
 
 | Workflow             | When it runs                              | What it does                                                                                         |
 | -------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ci-pre-commit`      | Every PR to `main`                        | Installs all tools and runs `pre-commit run --all-files` to validate hooks                           |
-| `ci-container-build` | PRs that change `images/**`               | Builds base, terraform, and k8s for `linux/amd64` and `linux/arm64` on native runners, then smoke-tests each tool on each architecture |
+| `ci-container-build` | PRs that change `images/**`               | Builds base, terraform, and k8s for `linux/amd64` and `linux/arm64` on native runners, smoke-testing each image on each architecture in the job that builds it |
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |

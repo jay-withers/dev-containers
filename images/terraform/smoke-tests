@@ -1,0 +1,12 @@
+# Commands run inside the terraform image to prove its tooling works, one per
+# line. Read by scripts/smoke-test.sh.
+#
+# Only what this image adds on top of base — the base image's own tooling is
+# covered by images/base/smoke-tests, in the job that builds it.
+#
+# tfenv installs Terraform itself from the consuming repo's .terraform-version,
+# so there is no terraform binary here to check.
+checkov --version
+tflint --version
+terraform-docs --version
+tfenv --version
