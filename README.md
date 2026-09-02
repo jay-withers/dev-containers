@@ -4,11 +4,11 @@ A catalog of VS Code dev container images for Azure infrastructure development. 
 
 ## Available images
 
-| Image       | Registry path                                  | Tooling on top of base                                            |
-| ----------- | ---------------------------------------------- | ----------------------------------------------------------------- |
-| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, PowerShell, pre-commit, general CLI utilities |
-| `terraform` | `ghcr.io/jay-withers/dev-containers/terraform` | + tflint, checkov, terraform-docs, tfenv                          |
-| `k8s`       | `ghcr.io/jay-withers/dev-containers/k8s`       | + kubectl, kubectx, helm, k9s                                     |
+| Image       | Registry path                                  | Tooling on top of base                                                        |
+| ----------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, PowerShell, Docker CLI, pre-commit, general CLI utilities |
+| `terraform` | `ghcr.io/jay-withers/dev-containers/terraform` | + tflint, checkov, terraform-docs, tfenv                                      |
+| `k8s`       | `ghcr.io/jay-withers/dev-containers/k8s`       | + kubectl, kubectx, helm, k9s                                                 |
 
 Each specialised image is built `FROM` the base image, so common tooling stays in one place.
 
@@ -37,6 +37,29 @@ To pin to a specific image version rather than `latest`, use a semver tag:
 "image": "ghcr.io/jay-withers/dev-containers/terraform:v1.2.3"
 ```
 
+## Using Docker from inside a dev container
+
+Every image ships the Docker **client** — `docker`, plus the `buildx` and `compose` plugins — but no daemon. This is "Docker outside of Docker": commands talk to your *host's* Docker daemon, so containers you start are siblings on the host rather than nested inside the dev container. Nothing needs privileged mode.
+
+Two things go in the consuming repo's `devcontainer.json` — bind-mount the host socket, and run the setup helper once per container start:
+
+```json
+{
+  "image": "ghcr.io/jay-withers/dev-containers/base:latest",
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "postStartCommand": "sudo /usr/local/bin/docker-socket-setup"
+}
+```
+
+The mount alone is not quite enough for the non-root `vscode` user, because who owns the socket depends on the host, and that can only be discovered once it is mounted. `docker-socket-setup` handles both cases:
+
+- **Linux hosts**, where the socket is owned by the host's `docker` group: the image's `docker` group adopts that GID (or, if another group already holds it, that group is used) and `vscode` is added to it.
+- **Docker Desktop** (macOS and Windows), where the socket is mounted owned by `root`: no group membership can reach it and loosening its mode would alter permissions on the host's own socket, so socat proxies it to a second, `vscode`-owned socket and `DOCKER_HOST` is pointed there automatically for interactive shells.
+
+It needs root — hence `sudo`, which the `vscode` user has passwordless — and is safe to re-run, which `postStartCommand` does on every start. Skip the hook and the CLI still works as `root` or via `sudo docker ...`.
+
 ## Prerequisites (for local use)
 
 - [Docker](https://www.docker.com/get-started/) installed and running
@@ -46,7 +69,8 @@ To pin to a specific image version rather than `latest`, use a semver tag:
 
 ```text
 images/
-  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, PowerShell, pre-commit, general CLI utilities
+  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, PowerShell, Docker CLI, pre-commit, general CLI utilities
+  base/docker-socket-setup.sh  # container-start helper that grants non-root access to the mounted Docker socket
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
   k8s/Dockerfile         # FROM base + kubectl, kubectx, helm, k9s
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
@@ -56,17 +80,17 @@ Makefile                 # setup / lint / build targets (run `make help`)
 
 ## Tooling versions
 
-All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov and pre-commit, which publish no checksum file, are instead verified against the SHA256 digest reported by the GitHub release API). Azure CLI and ble.sh have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest — and because the Azure CLI `.deb` differs per architecture, it carries one URL and digest per architecture. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
+All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov and pre-commit, which publish no checksum file, are instead verified against the SHA256 digest reported by the GitHub release API). Azure CLI, ble.sh, and the Docker CLI have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest — and because the Azure CLI `.deb` and the Docker CLI tarball differ per architecture, each carries one URL and digest per architecture. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
 
-Each tool ARG holds the URL of the `arm64` asset, and the install step rewrites that architecture token to match the architecture being built (read from BuildKit's `TARGETARCH`). Upstream naming is not consistent — Node and PowerShell publish `x64`, kubectx publishes `x86_64`, and checkov publishes `X86_64`, where most projects use `amd64` — so those tools map the token explicitly. Keeping the version in a literal URL is what lets Renovate's custom managers find and bump it.
+Each tool ARG holds the URL of the `arm64` asset, and the install step rewrites that architecture token to match the architecture being built (read from BuildKit's `TARGETARCH`). Upstream naming is not consistent — Node and PowerShell publish `x64`, kubectx publishes `x86_64`, checkov publishes `X86_64`, and the Docker CLI and compose pair `x86_64` with `aarch64` (the only tools that rename the arm64 side as well), where most projects use `amd64` — so those tools map the token explicitly. Keeping the version in a literal URL is what lets Renovate's custom managers find and bump it.
 
 The base image runs `apt-get upgrade` before installing anything, so the packages the upstream base image already ships are patched to whatever Ubuntu currently has. That is deliberately not reproducible — an apt package carries no version pin here, and leaving it unpinned *and* un-upgraded would freeze it at whatever version the upstream base was built with. The URL-pinned tools above are what make the build reproducible where it matters.
 
 It costs roughly 126MB of uncompressed image size: Docker layers are additive, so the upgraded copies of the ~115 packages involved sit on top of the originals in the upstream base's layers instead of replacing them. That is the price of patched apt packages in an image people develop in.
 
-The base image also installs a set of general-purpose CLI utilities from Ubuntu's apt repositories (apt verifies these itself, so they carry no version pin): DNS/network tools (`dig`, `nslookup`, `host`, `ping`, `traceroute`, `nc`), plus `jq`, `wget`, `rsync`, `zip`, `file`, `tree`, `vim`, `nano`, and `less`.
+The base image also installs a set of general-purpose CLI utilities from Ubuntu's apt repositories (apt verifies these itself, so they carry no version pin): DNS/network tools (`dig`, `nslookup`, `host`, `ping`, `traceroute`, `nc`, `socat` — the last of which also backs the Docker socket proxy described above), plus `jq`, `wget`, `rsync`, `zip`, `file`, `tree`, `vim`, `nano`, and `less`.
 
-Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, kubectl, helm, terraform-docs, and terraform. The base image also ships [ble.sh](https://github.com/akinomyoga/ble.sh), which gives interactive bash shells Fish-style inline autosuggestions — as you type, the most recent matching command from history appears greyed-out ahead of the cursor; press the right-arrow key to accept it. It is sourced automatically from the `vscode` user's `.bashrc`.
+Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, Docker, kubectl, helm, terraform-docs, and terraform. The base image also ships [ble.sh](https://github.com/akinomyoga/ble.sh), which gives interactive bash shells Fish-style inline autosuggestions — as you type, the most recent matching command from history appears greyed-out ahead of the cursor; press the right-arrow key to accept it. It is sourced automatically from the `vscode` user's `.bashrc`.
 
 | Tool           | Version      | Image     |
 | -------------- | ------------ | --------- |
@@ -74,7 +98,10 @@ Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, kubectl, helm
 | GitHub CLI     | 2.96.0       | base      |
 | Node.js        | 24.16.0      | base      |
 | PowerShell     | 7.6.5        | base      |
-| pre-commit     | 3.7.1        | base      |
+| pre-commit     | 4.6.2        | base      |
+| Docker CLI     | 29.7.2       | base      |
+| docker buildx  | 0.37.0       | base      |
+| docker compose | 5.5.0        | base      |
 | ble.sh         | 0.4.0-devel3 | base      |
 | TFLint         | 0.61.0       | terraform |
 | Checkov        | 3.2.529      | terraform |
