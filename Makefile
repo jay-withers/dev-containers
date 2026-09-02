@@ -1,12 +1,16 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint build build-base build-terraform build-k8s prune-packages scan-images
+.PHONY: help setup lint build build-base build-terraform build-k8s smoke-test prune-packages scan-images
 
 KEEP ?= 10
 PR_MAX_AGE_DAYS ?= 7
 DRY_RUN ?= true
 TAG ?= latest
 PLATFORMS ?= linux/amd64 linux/arm64
+# smoke-test: default to every image in images/, and skip the architecture
+# assertion (which only makes sense when a specific arch was built for).
+IMAGES ?=
+ARCH ?=
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -28,6 +32,9 @@ build-terraform: build-base ## Build the terraform image (FROM base)
 
 build-k8s: build-base ## Build the k8s image (FROM base)
 	docker build --build-arg BASE_IMAGE=base -t k8s images/k8s
+
+smoke-test: ## Run each image's smoke tests (images/<name>/smoke-tests) against the locally built images (args: IMAGES, ARCH)
+	IMAGES="$(IMAGES)" ARCH="$(ARCH)" ./scripts/smoke-test.sh
 
 prune-packages: ## Prune old image versions from GHCR (args: KEEP, PR_MAX_AGE_DAYS, DRY_RUN - defaults to a dry run)
 	KEEP="$(KEEP)" PR_MAX_AGE_DAYS="$(PR_MAX_AGE_DAYS)" DRY_RUN="$(DRY_RUN)" ./scripts/prune-packages.sh

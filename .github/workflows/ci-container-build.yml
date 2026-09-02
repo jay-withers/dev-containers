@@ -60,17 +60,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Loaded as well as pushed, so the smoke test below can run the image
+      # here rather than pulling the tag straight back down again.
       - name: Build base image for linux/${{ matrix.arch }}
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: images/base
           platforms: linux/${{ matrix.arch }}
           push: true
+          load: true
           secrets: |
             gh_token=${{ secrets.GITHUB_TOKEN }}
           tags: ${{ env.BASE_REPO }}:pr-${{ github.run_id }}-${{ matrix.arch }}
           cache-from: type=gha,scope=base-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=base-${{ matrix.arch }}
+
+      # The commands live in images/base/smoke-tests, next to the Dockerfile
+      # that installs the tools, so the same checks can be run locally with
+      # `make smoke-test`. Each image is tested in the job that builds it, so a
+      # failure names the image that actually broke; the leaf jobs cover only
+      # their own additions and never re-test any of this.
+      - name: Smoke test base image on linux/${{ matrix.arch }}
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: ./scripts/smoke-test.sh base "${{ env.BASE_REPO }}:pr-${{ github.run_id }}-${{ matrix.arch }}"
 
   leaves:
     needs: base
@@ -117,44 +130,10 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
 
+      # Runs images/${{ matrix.image }}/smoke-tests, which lists only what this
+      # image adds on top of base. A new image needs no change here: it is
+      # picked up from its own directory.
       - name: Smoke test ${{ matrix.image }} image on linux/${{ matrix.arch }}
-        run: |
-          IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}
-
-          # Confirm the image really is the architecture we asked for — a
-          # mismatch here means an install step pulled the wrong asset.
-          got="$(docker image inspect --format '{{.Architecture}}' "$IMAGE")"
-          if [ "$got" != "${{ matrix.arch }}" ]; then
-            echo "expected ${{ matrix.arch }} image, got ${got}" >&2
-            exit 1
-          fi
-
-          # Base tools common to every image.
-          docker run --rm "$IMAGE" bash -c "
-            az --version && \
-            gh --version && \
-            node --version && \
-            pwsh --version && \
-            pre-commit --version && \
-            dig -v && \
-            jq --version
-          "
-
-          # Tooling the leaf image adds on top of base.
-          if [ "${{ matrix.image }}" = "terraform" ]; then
-            docker run --rm "$IMAGE" bash -c "
-              checkov --version && \
-              tflint --version && \
-              terraform-docs --version
-            "
-          elif [ "${{ matrix.image }}" = "k8s" ]; then
-            docker run --rm "$IMAGE" bash -c "
-              kubectl version --client && \
-              helm version && \
-              k9s version && \
-              kubectx --version
-            "
-          else
-            echo "no smoke test defined for image '${{ matrix.image }}'" >&2
-            exit 1
-          fi
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: ./scripts/smoke-test.sh "${{ matrix.image }}" "${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}"

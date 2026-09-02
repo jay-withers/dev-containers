@@ -1,0 +1,22 @@
+# Commands run inside the base image to prove its tooling works, one per line.
+# Read by scripts/smoke-test.sh (see there for how these are executed).
+#
+# Only what THIS image installs belongs here: each image is tested by the job
+# that builds it, so a failure names the image that actually broke and nothing
+# is re-tested downstream. Leaf images list only their own additions.
+az --version
+gh --version
+node --version
+pwsh --version
+pre-commit --version
+dig -v
+jq --version
+
+# Docker client only — no daemon is mounted during a smoke test, so these
+# catch a wrong-architecture binary or a missing CLI plugin, which is what a
+# build can actually break. Socket access is a runtime concern, handled by
+# docker-socket-setup.
+docker --version
+docker buildx version
+docker compose version
+test -x /usr/local/bin/docker-socket-setup
