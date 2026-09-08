@@ -6,7 +6,7 @@ A catalog of VS Code dev container images for Azure infrastructure development. 
 
 | Image       | Registry path                                  | Tooling on top of base                                                        |
 | ----------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
-| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, PowerShell, Docker CLI, pre-commit, general CLI utilities |
+| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, PowerShell, Docker CLI, psql, pre-commit, general CLI utilities |
 | `terraform` | `ghcr.io/jay-withers/dev-containers/terraform` | + tflint, checkov, terraform-docs, tfenv                                      |
 | `k8s`       | `ghcr.io/jay-withers/dev-containers/k8s`       | + kubectl, kubectx, helm, k9s                                                 |
 
@@ -69,7 +69,7 @@ It needs root — hence `sudo`, which the `vscode` user has passwordless — and
 
 ```text
 images/
-  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, PowerShell, Docker CLI, pre-commit, general CLI utilities
+  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, PowerShell, Docker CLI, psql, pre-commit, general CLI utilities
   base/smoke-tests       # commands proving the base tooling works (see Smoke tests below)
   base/docker-socket-setup.sh  # container-start helper granting non-root access to the mounted Docker socket
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
@@ -106,6 +106,7 @@ Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, Docker, kubec
 | docker buildx  | 0.37.0       | base      |
 | docker compose | 5.5.0        | base      |
 | ble.sh         | 0.4.0-devel3 | base      |
+| psql           | 18           | base      |
 | TFLint         | 0.61.0       | terraform |
 | Checkov        | 3.2.529      | terraform |
 | terraform-docs | 0.24.0       | terraform |

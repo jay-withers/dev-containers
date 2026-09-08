@@ -11,6 +11,7 @@ pwsh --version
 pre-commit --version
 dig -v
 jq --version
+psql --version
 
 # Docker client only — no daemon is mounted during a smoke test, so these
 # catch a wrong-architecture binary or a missing CLI plugin, which is what a
