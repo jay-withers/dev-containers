@@ -15,6 +15,13 @@ name: cd-scan
 # Also callable on its own (workflow_dispatch) to scan any published tag without
 # republishing anything.
 #
+# Each report records what it found in a hidden marker in the issue body, and
+# the next run diffs against it. That drives what gets sent: the comment (which
+# is the email) carries a short digest headed by what changed, the body carries
+# the full report, the title carries the numbers so the subject line is worth
+# reading, and a run that changed nothing updates the issue without commenting
+# at all - so an email means something actually moved.
+#
 # The report goes to the run summary and to a tracked GitHub issue. The issue is
 # what generates the email: GitHub notifies subscribers when an issue is opened
 # or commented on, so each run posts a comment (and refreshes the body so the
@@ -67,6 +74,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Fetched before the scan so the report can say what changed rather than
+      # restating the same totals: the previous body carries a machine-readable
+      # scan-state marker the script diffs against. No open issue yet just means
+      # no comparison - the report says so and carries on.
+      - name: Fetch the previous report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          LABEL: vulnerability-report
+        run: |
+          number="$(gh issue list --label "${LABEL}" --state open --limit 1 --json number --jq '.[0].number // empty' || true)"
+          if [[ -n "${number}" ]] && gh issue view "${number}" --json body --jq .body > previous.md; then
+            echo "Previous report: issue #${number} ($(wc -c < previous.md) bytes)"
+          else
+            rm -f previous.md
+            echo "No previous report available - this run is the baseline."
+          fi
+
       # A finding never fails this step. A scan that could not run does, which
       # is why the steps below are always() — a partial report is still worth
       # sending, and the failed step is what marks the job (and emails you).
@@ -77,6 +102,9 @@ jobs:
         env:
           REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
+          PREVIOUS_REPORT: previous.md
+          DIGEST_FILE: digest.md
+          META_FILE: scan.env
         run: ./scripts/scan-images.sh > report.md
 
       - name: Add the report to the run summary
@@ -103,13 +131,52 @@ jobs:
           fi
 
           # An issue body caps at 65,536 characters. The full report is in the
-          # run summary either way, so trim rather than fail the publish.
-          if (( $(wc -c < report.md) > 60000 )); then
-            head -c 59000 report.md > report.trimmed.md
+          # run summary either way, so trim rather than fail the publish. The
+          # scan-state marker is carried over the trim rather than cut off the
+          # end with everything else - it is what the next run diffs against,
+          # and losing it costs that run its comparison.
+          state="$(grep -o '^<!-- scan-state:.*-->$' report.md | tail -1 || true)"
+          if (( $(wc -c < report.md) + ${#state} > 60000 )); then
+            head -c 55000 report.md > report.trimmed.md
             printf '\n\n_Report trimmed to fit a GitHub issue. The full version is in the [workflow run summary](%s/%s/actions/runs/%s)._\n' \
               "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}" >> report.trimmed.md
+            if [[ -n "${state}" ]]; then
+              printf '\n%s\n' "${state}" >> report.trimmed.md
+            fi
             mv report.trimmed.md report.md
           fi
+
+          # Defaults cover a scan that died before writing its results: with
+          # nothing to compare, the run still notifies rather than going quiet.
+          OS_TOTAL="?" NEW_COUNT=0 CHANGED=unknown SCAN_FAILED=true
+          if [[ -s scan.env ]]; then
+            # shellcheck disable=SC1091  # written by the scan step
+            source scan.env
+          fi
+
+          # The title is the subject line of every notification this issue
+          # sends, so it carries the numbers - otherwise every week's email is
+          # indistinguishable from the last and none of them is worth opening.
+          # The issue is always looked up by label, never by title, so this is
+          # free to change.
+          title="${TITLE} — ${OS_TOTAL} to fix"
+          if [[ "${CHANGED}" == "true" ]]; then
+            title="${title}, ${NEW_COUNT} new"
+          fi
+
+          # The comment is the notification, so it carries the digest, not the
+          # full report: a mail client will not collapse the report's <details>
+          # blocks, and mailing every CVE table once a week is how a report
+          # stops being read. The body keeps the full version, one click away.
+          if [[ -s digest.md ]]; then
+            cp digest.md comment.md
+          else
+            cp report.md comment.md
+          fi
+          {
+            echo
+            echo "[Full report](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) · reproduce with \`make scan-images\`"
+          } >> comment.md
 
           gh label create "${LABEL}" \
             --color FBCA04 \
@@ -122,11 +189,22 @@ jobs:
             # Assigning is what puts it in the owner's inbox. On an org-owned
             # repo the owner is not an assignable user, so fall back to an
             # unassigned issue rather than losing the report entirely.
-            gh issue create --title "${TITLE}" --body-file report.md --label "${LABEL}" --assignee "${ASSIGNEE}" \
-              || gh issue create --title "${TITLE}" --body-file report.md --label "${LABEL}"
-          else
-            # The comment is the notification; the body edit keeps the issue
-            # itself showing the latest run rather than the first one.
-            gh issue comment "${number}" --body-file report.md
-            gh issue edit "${number}" --body-file report.md
+            gh issue create --title "${title}" --body-file report.md --label "${LABEL}" --assignee "${ASSIGNEE}" \
+              || gh issue create --title "${title}" --body-file report.md --label "${LABEL}"
+            exit 0
           fi
+
+          # The body always gets the current report; editing it sends no
+          # notification, which is exactly what a quiet week wants.
+          gh issue edit "${number}" --title "${title}" --body-file report.md
+
+          # Commenting is what sends the email, so it happens only when there
+          # is something to say: findings appeared or cleared, no baseline to
+          # compare against, or a scan that did not run and left the numbers
+          # incomplete. An unchanged week updates the issue silently.
+          if [[ "${CHANGED}" == "false" && "${SCAN_FAILED}" != "true" ]]; then
+            echo "Nothing new and nothing cleared — issue #${number} updated without a comment."
+            exit 0
+          fi
+
+          gh issue comment "${number}" --body-file comment.md

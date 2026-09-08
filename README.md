@@ -188,11 +188,29 @@ It is the final job in the publish run and gates nothing: every image is tagged 
 The report goes two places:
 
 - the **workflow run summary**, in full
-- a **tracked GitHub issue** labelled `vulnerability-report`, which is what reaches your inbox. Each run posts a comment (GitHub emails subscribers on new issues and new comments, but *not* on body edits) and refreshes the issue body so the issue itself always shows the latest run. The first run assigns the issue to the repo owner, which is what subscribes you. Close the issue and the next run opens a fresh one — no secrets, no SMTP configuration.
+- a **tracked GitHub issue** labelled `vulnerability-report`, which is what reaches your inbox. The first run assigns the issue to the repo owner, which is what subscribes you. Close the issue and the next run opens a fresh one — no secrets, no SMTP configuration.
+
+GitHub emails subscribers on new issues and new comments, but *not* on body edits, and that split is what the workflow is built around:
+
+- the **issue body** always holds the full report, refreshed every run. It is also where the next run reads the previous state from.
+- the **comment** is the notification, so it carries a short digest — the headline, what changed since last time, and the per-image summary — rather than the whole report. Mail clients don't collapse `<details>`, so commenting the full report means posting every CVE table into your inbox.
+- the **issue title** carries the numbers (`… — 5 to fix, 2 new`), because the title is the subject line of every notification the issue sends. The issue is always looked up by label, never by title, so it is free to change.
+- a run where **nothing appeared and nothing cleared posts no comment at all** — it updates the body silently. An email therefore means something actually moved. A failed scan always comments, since incomplete numbers are worth knowing about.
+
+That matters more than it sounds: `cd-scan` runs on every publish, not just the weekly one, so before this the average Renovate merge generated a report email identical to the last.
 
 To get the email, GitHub notifications for **Issues** must be enabled on your account (Settings → Notifications → Subscriptions), which is the default for issues you're assigned to or participating in.
 
-Findings are deduplicated across platforms on (CVE, package) — both architectures install the same apt packages, so an undeduplicated count would double everything — and the report's *Platforms* column shows where each was seen. The detail table lists only **fixable HIGH/CRITICAL** findings — everything else is summarised numerically, because tabling several thousand MEDIUMs makes a report nobody reads. The table is capped at `MAX_ROWS` (200) per image, set above what these images actually carry so a normal run tables everything; the cap exists to stop a pathological result set producing an unreadable report, and the remainder is always reported as a count rather than dropped silently.
+The report is organised by **what would fix each finding**, because that is the only thing a reader can act on:
+
+- **Fixable by a rebuild** — findings in apt packages. `images/base/Dockerfile` runs `apt-get upgrade`, so the next publish clears them. This is the headline, because it is the only bucket that can reach zero. Rows are grouped by CVE rather than by package: one gnupg advisory is recorded against ten binary packages, and ten rows saying "apt upgrade" read no differently from one.
+- **Vendored in pinned tool releases** — findings in Go modules compiled into a downloaded binary, or in the Python and npm trees a tool ships alongside itself. Nothing in this repo patches those; the artifact has to be rebuilt by its author. They are grouped by the tool that carries them, out of the headline, because the useful signal is *which* tool is dragging in risk — a tool that stays vulnerable long enough is a decision about whether to keep depending on it, not a number to drive to zero.
+
+Every finding is attributed to the artifact that owns it — `/usr/local/bin/k9s`, `/opt/az`, `apt (ubuntu 24.04)` — rather than left as a bare package name, since a `stdlib` finding is unactionable until you know which binary it came from. Trivy supplies this (the result target for a Go binary, `PkgPath` for a Python or npm package), so it is derived rather than maintained in a table, and a new tool or image needs no change to the script.
+
+Detail tables are global, not per-image, with an *Images* column. Every image is built `FROM` base, so per-image tables repeat base's findings in each leaf and any total across them counts the same finding two or three times. Findings are deduplicated on (CVE, package, owner) — the same CVE in two different binaries is two things to fix, but the same finding on both architectures is one finding seen twice — and the *Platforms* column shows where each was seen. Only HIGH/CRITICAL findings with a published fix are tabled; everything else is summarised numerically, because tabling several thousand MEDIUMs makes a report nobody reads. Tables are capped at `MAX_ROWS` (200), set above what these images actually carry, and the remainder is reported as a count rather than dropped silently.
+
+Each report ends with a hidden `scan-state` marker listing what it found. The next run reads it back out of the issue body and leads with **what changed** — what appeared, what cleared — instead of restating the same totals every week. The state travels inside the report itself, so there is no separate store to keep in step; a missing or unreadable marker just means that run is a baseline.
 
 ### Kernel headers
 
@@ -203,7 +221,7 @@ Ubuntu records every kernel CVE against `linux-libc-dev`, which on the current b
 Fixable findings in these images come from three places, each with a different fix:
 
 - **apt packages.** The base image runs `apt-get upgrade` before installing anything, so these are patched to whatever Ubuntu currently ships as of the build — the weekly rebuild is what keeps that current. A finding surviving here means Ubuntu has published no fix, or the fix needs a package added or removed (`upgrade` won't do either; see the note in [images/base/Dockerfile](images/base/Dockerfile)).
-- **libraries vendored inside the pinned tool downloads** — Python packages inside the Azure CLI, npm packages inside Node, the Go standard library compiled into `gh`, `tflint`, and friends. These clear when Renovate bumps that tool's pinned URL.
+- **libraries vendored inside the pinned tool downloads** — Python packages inside the Azure CLI, npm packages inside Node, the Go standard library compiled into `gh`, `tflint`, and friends. Bumping the pinned URL clears these *only if the tool has published a newer release*, and Renovate raises that PR automatically — so when every pin is already current, these findings simply stand until upstream rebuilds. They are the bulk of what the scan reports, which is why they are counted separately from the headline rather than presented as a to-do list.
 - **kernel headers**, as above — nothing to fix.
 
 Run a scan locally (needs `jq`, plus either `trivy` on `PATH` or Docker — the script falls back to running Trivy from a container):
@@ -214,9 +232,10 @@ make scan-images TAG=v1.2.3                       # report on a specific publish
 make scan-images PLATFORMS=linux/arm64            # one architecture only
 ./scripts/scan-images.sh > report.md              # report to a file, progress to the terminal
 IGNORE_PKGS= MAX_ROWS=500 make scan-images        # everything, kernel headers included
+PREVIOUS_REPORT=old.md make scan-images           # diff against an earlier report
 ```
 
-The script takes `REPO`, `TAG`, `PLATFORMS`, `IMAGES`, `IGNORE_PKGS`, `MAX_ROWS`, and `TRIVY_IMAGE` as environment overrides — see the header of [scripts/scan-images.sh](scripts/scan-images.sh). Images are discovered from the `images/` directory, so a new image is scanned with no change here. The workflow takes the image `tag` as a `workflow_dispatch` input.
+The script takes `REPO`, `TAG`, `PLATFORMS`, `IMAGES`, `IGNORE_PKGS`, `MAX_ROWS`, `PREVIOUS_REPORT`, `DIGEST_FILE`, `META_FILE`, and `TRIVY_IMAGE` as environment overrides — see the header of [scripts/scan-images.sh](scripts/scan-images.sh). Images are discovered from the `images/` directory, so a new image is scanned with no change here. The workflow takes the image `tag` as a `workflow_dispatch` input.
 
 Trivy itself is intentionally installed at `latest` rather than pinned: no Renovate manager in this repo bumps an action's version input, so a pin would go stale and quietly stop detecting new CVEs. Each report records the exact Trivy version that produced it.
 
