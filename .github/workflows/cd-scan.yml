@@ -15,6 +15,10 @@ name: cd-scan
 # Also callable on its own (workflow_dispatch) to scan any published tag without
 # republishing anything.
 #
+# Each report records what it found in a hidden marker in the issue body, and
+# the next run diffs against it, so the report leads with what changed since
+# last time instead of the same totals every week.
+#
 # The report goes to the run summary and to a tracked GitHub issue. The issue is
 # what generates the email: GitHub notifies subscribers when an issue is opened
 # or commented on, so each run posts a comment (and refreshes the body so the
@@ -67,6 +71,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Fetched before the scan so the report can say what changed rather than
+      # restating the same totals: the previous body carries a machine-readable
+      # scan-state marker the script diffs against. No open issue yet just means
+      # no comparison - the report says so and carries on.
+      - name: Fetch the previous report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          LABEL: vulnerability-report
+        run: |
+          number="$(gh issue list --label "${LABEL}" --state open --limit 1 --json number --jq '.[0].number // empty' || true)"
+          if [[ -n "${number}" ]] && gh issue view "${number}" --json body --jq .body > previous.md; then
+            echo "Previous report: issue #${number} ($(wc -c < previous.md) bytes)"
+          else
+            rm -f previous.md
+            echo "No previous report available - this run is the baseline."
+          fi
+
       # A finding never fails this step. A scan that could not run does, which
       # is why the steps below are always() — a partial report is still worth
       # sending, and the failed step is what marks the job (and emails you).
@@ -77,6 +99,7 @@ jobs:
         env:
           REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
+          PREVIOUS_REPORT: previous.md
         run: ./scripts/scan-images.sh > report.md
 
       - name: Add the report to the run summary
@@ -103,11 +126,18 @@ jobs:
           fi
 
           # An issue body caps at 65,536 characters. The full report is in the
-          # run summary either way, so trim rather than fail the publish.
-          if (( $(wc -c < report.md) > 60000 )); then
-            head -c 59000 report.md > report.trimmed.md
+          # run summary either way, so trim rather than fail the publish. The
+          # scan-state marker is carried over the trim rather than cut off the
+          # end with everything else - it is what the next run diffs against,
+          # and losing it costs that run its comparison.
+          state="$(grep -o '^<!-- scan-state:.*-->$' report.md | tail -1 || true)"
+          if (( $(wc -c < report.md) + ${#state} > 60000 )); then
+            head -c 55000 report.md > report.trimmed.md
             printf '\n\n_Report trimmed to fit a GitHub issue. The full version is in the [workflow run summary](%s/%s/actions/runs/%s)._\n' \
               "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}" >> report.trimmed.md
+            if [[ -n "${state}" ]]; then
+              printf '\n%s\n' "${state}" >> report.trimmed.md
+            fi
             mv report.trimmed.md report.md
           fi
 
