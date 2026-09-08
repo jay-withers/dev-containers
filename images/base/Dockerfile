@@ -39,6 +39,16 @@ ARG NODE_URL="https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-arm64.tar.xz"
 ARG PWSH_URL="https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-arm64.tar.gz"
 # pre-commit ships a single architecture-independent .pyz zipapp.
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v4.6.2/pre-commit-4.6.2.pyz"
+# The PostgreSQL project's apt repository signing key. Architecture-independent,
+# no version in the URL, so there is nothing for Renovate to bump — it is pinned
+# to a hand-maintained @sha256: digest like the other unversioned downloads.
+# (Named ...SIGNING_ASC... rather than ...KEY...: BuildKit warns about any ARG
+# whose name looks like a secret, and a public key is the opposite of one.)
+ARG PGDG_SIGNING_ASC_URL="https://www.postgresql.org/media/keys/ACCC4CF8.asc@sha256:0144068502a1eddd2a0280ede10ef607d1ec592ce819940991203941564e8e76"
+# The psql major version. Deliberately not tracked by Renovate: moving to a new
+# PostgreSQL major is a decision about which servers this has to talk to, not a
+# routine bump.
+ARG PGDG_CLIENT_MAJOR="18"
 
 # Base dependencies and general-purpose CLI tools.
 # These come from Ubuntu's signed apt repositories, so apt verifies integrity
@@ -69,6 +79,36 @@ RUN apt-get update \
         jq wget rsync zip file tree \
         vim nano less \
     && rm -rf /var/lib/apt/lists/*
+
+# psql, from the PostgreSQL project's own apt repository rather than Ubuntu's.
+#
+# Ubuntu 24.04 ships psql 16, and the servers it gets pointed at are newer:
+# Azure Database for PostgreSQL Flexible Server runs 17 by default and a local
+# Postgres container is on 18. psql warns on every connection to a server newer
+# than itself and renders some \d metacommands incorrectly against one, so the
+# client wants to be at least as new as the server, never older.
+#
+# A repository rather than a .deb pinned by digest (which is what azure-cli
+# does): psql pulls in libpq5, and a repository means `apt-get upgrade` above
+# patches both along with everything else, which for a library is worth more
+# than a frozen version. The signing key is pinned by digest instead, and apt
+# then verifies every package it installs against it. PGDG's libpq5 supersedes
+# Ubuntu's 16.x, which is intended — it is the same library, newer.
+#
+# The suite is derived from the base image's own codename rather than hardcoded,
+# so moving to a newer Ubuntu picks up the matching PGDG suite instead of
+# silently installing noble packages on a newer release.
+RUN URL="${PGDG_SIGNING_ASC_URL%@sha256:*}" \
+    && SHA="${PGDG_SIGNING_ASC_URL##*@sha256:}" \
+    && curl -fsSL "${URL}" -o /usr/share/keyrings/pgdg.asc \
+    && echo "${SHA}  /usr/share/keyrings/pgdg.asc" | sha256sum -c \
+    && CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME}")" \
+    && echo "deb [signed-by=/usr/share/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt ${CODENAME}-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends "postgresql-client-${PGDG_CLIENT_MAJOR}" \
+    && rm -rf /var/lib/apt/lists/* \
+    && psql --version
 
 # azure-cli — verified against its hand-pinned SHA256 digest
 RUN case "${TARGETARCH}" in \
