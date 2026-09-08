@@ -84,6 +84,17 @@
 #                marker, the report gains a "changes since" section naming what
 #                appeared and what cleared. Missing or unreadable is not an
 #                error - the section is simply omitted.
+#   DIGEST_FILE  path to write a short digest of the report to, in addition to
+#                the full report on stdout. This is what a notification should
+#                carry: the headline, what changed, and the per-image summary,
+#                with the detail left in the full report. A mail client will
+#                not collapse the full report's <details> blocks, so sending
+#                that as a notification means posting every CVE table into an
+#                inbox once a week.
+#   META_FILE    path to write shell-sourceable KEY=value results to, for a
+#                caller that has to decide something from them - notably
+#                CHANGED (true/false/unknown), so a run that found nothing new
+#                need not notify anybody.
 #   TRIVY_IMAGE  image used when trivy is not on PATH
 #                (default: ghcr.io/aquasecurity/trivy:latest)
 
@@ -370,36 +381,101 @@ STATE_NOW="$(jq -c --argjson ignore "${IGNORE_JSON}" "${JQ_DEFS}"'
 ' "${ALL_MERGED}")"
 
 DELTA_SECTION=""
+DELTA_DIGEST=""
 STATE_PREV=""
+NEW_COUNT=0
+CLEARED_COUNT=0
+# unknown means "no baseline to compare against", which is not the same as
+# "nothing changed" - a caller deciding whether to notify has to tell them
+# apart, or the very first run would go out silently.
+CHANGED="unknown"
+
 if [[ -n "${PREVIOUS_REPORT:-}" && -r "${PREVIOUS_REPORT}" ]]; then
   STATE_PREV="$(sed -n 's/^<!-- scan-state:\(.*\) -->$/\1/p' "${PREVIOUS_REPORT}" | tail -1)"
   # A previous report that predates this marker, or one truncated before it,
   # leaves this empty - which means no comparison, not a broken report.
   if [[ -n "${STATE_PREV}" ]] && jq -e 'type == "array"' >/dev/null 2>&1 <<<"${STATE_PREV}"; then
-    DELTA_SECTION="$(jq -r --argjson now "${STATE_NOW}" '
-      . as $prev
-      | (($now - $prev) | sort) as $new
-      | (($prev - $now) | sort) as $gone
-      | def render($list; $verb):
-          if ($list | length) == 0 then "Nothing \($verb)."
-          else ($list | map(split("|") | "- \(.[1]) in `\(.[2])`") | .[0:20] | join("\n"))
-               + (if ($list | length) > 20 then "\n- _…and \(($list | length) - 20) more_" else "" end)
-          end;
-      "### Changes since the last report\n\n"
-      + "**\($new | length) new**, **\($gone | length) cleared**.\n\n"
-      + (if ($new | length) > 0 then "New:\n\n" + render($new; "new") + "\n\n" else "" end)
-      + (if ($gone | length) > 0 then "Cleared:\n\n" + render($gone; "cleared") + "\n\n" else "" end)
-    ' <<<"${STATE_PREV}")"
-    echo "delta: computed against the previous report" >&2
+    read -r NEW_COUNT CLEARED_COUNT <<<"$(
+      jq -r --argjson now "${STATE_NOW}" '[(($now - .) | length), ((. - $now) | length)] | @tsv' <<<"${STATE_PREV}"
+    )"
+    CHANGED=$( ((NEW_COUNT + CLEARED_COUNT > 0)) && echo true || echo false )
+
+    # $limit rows in the full report, a shorter list in the digest: the digest
+    # is read in an inbox, where a hundred-line list is the same as no list.
+    delta_md() {
+      jq -r --argjson now "${STATE_NOW}" --argjson limit "$1" '
+        . as $prev
+        | (($now - $prev) | sort) as $new
+        | (($prev - $now) | sort) as $gone
+        | def render($list):
+            ($list | map(split("|") | "- \(.[1]) in `\(.[2])`") | .[0:$limit] | join("\n"))
+            + (if ($list | length) > $limit then "\n- _…and \(($list | length) - $limit) more_" else "" end);
+          "### Changes since the last report\n\n"
+        + "**\($new | length) new**, **\($gone | length) cleared**.\n\n"
+        + (if ($new  | length) > 0 then "New:\n\n"     + render($new)  + "\n\n" else "" end)
+        + (if ($gone | length) > 0 then "Cleared:\n\n" + render($gone) + "\n\n" else "" end)
+      ' <<<"${STATE_PREV}"
+    }
+    DELTA_SECTION="$(delta_md 20)"
+    DELTA_DIGEST="$(delta_md 5)"
+    echo "delta: ${NEW_COUNT} new, ${CLEARED_COUNT} cleared" >&2
   fi
 fi
+
 if [[ -z "${DELTA_SECTION}" ]]; then
   DELTA_SECTION="### Changes since the last report"$'\n\n'"No previous report to compare against - this is the baseline."$'\n'
+  DELTA_DIGEST="${DELTA_SECTION}"
 fi
 
 if ((OS_TOTAL > MAX_ROWS)); then
   OS_ROWS="${OS_ROWS}"$'\n'"_Showing ${MAX_ROWS} of ${OS_TOTAL}. Raise \`MAX_ROWS\` to see the rest._"
   echo "note: tabled ${MAX_ROWS} of ${OS_TOTAL} rebuild-fixable findings" >&2
+fi
+
+# ---------------------------------------------------------------------------
+# The digest and the machine-readable results, for a caller that notifies.
+# ---------------------------------------------------------------------------
+HEADLINE="**${OS_TOTAL} HIGH/CRITICAL CVE(s) in apt packages clear on the next rebuild.**"
+
+if [[ -n "${DIGEST_FILE:-}" ]]; then
+  cat >"${DIGEST_FILE}" <<DIGEST
+## Container image vulnerability report
+
+\`${REGISTRY_HOST}/${REPO_PATH}/<image>:${TAG}\` - ${PLATFORMS// /, } - Trivy ${TRIVY_VERSION} - ${SCANNED_AT}
+
+${HEADLINE}
+A further ${VENDORED_TOTAL} finding(s) are vendored inside ${VENDORED_OWNERS} pinned tool release(s) and
+clear only when those tools publish new releases.
+
+${DELTA_DIGEST}
+
+| Image | Rebuild clears (CVEs) | Vendored (upstream) | Unfixed | MEDIUM | LOW/UNKNOWN | Kernel headers |
+| ----- | --------------------- | ------------------- | ------- | ------ | ----------- | -------------- |
+${SUMMARY_ROWS}
+DIGEST
+
+  if [[ -n "${SCAN_FAILURES}" ]]; then
+    cat >>"${DIGEST_FILE}" <<DIGEST
+**Some scans did not run, so these counts are incomplete:**
+
+${SCAN_FAILURES}
+DIGEST
+  fi
+
+  echo "digest: ${DIGEST_FILE}" >&2
+fi
+
+if [[ -n "${META_FILE:-}" ]]; then
+  {
+    echo "OS_TOTAL=${OS_TOTAL}"
+    echo "VENDORED_TOTAL=${VENDORED_TOTAL}"
+    echo "VENDORED_OWNERS=${VENDORED_OWNERS}"
+    echo "NEW_COUNT=${NEW_COUNT}"
+    echo "CLEARED_COUNT=${CLEARED_COUNT}"
+    echo "CHANGED=${CHANGED}"
+    echo "SCAN_FAILED=$(if [[ -n "${SCAN_FAILURES}" ]]; then echo true; else echo false; fi)"
+  } >"${META_FILE}"
+  echo "meta: ${META_FILE}" >&2
 fi
 
 # ---------------------------------------------------------------------------
@@ -410,7 +486,7 @@ cat <<REPORT
 
 Scanned \`${REGISTRY_HOST}/${REPO_PATH}/<image>:${TAG}\` for ${PLATFORMS// /, } with Trivy ${TRIVY_VERSION} on ${SCANNED_AT}.
 
-**${OS_TOTAL} HIGH/CRITICAL CVE(s) in apt packages clear on the next rebuild.** A further
+${HEADLINE} A further
 ${VENDORED_TOTAL} are vendored inside ${VENDORED_OWNERS} pinned tool release(s) and clear only when
 those tools publish new releases. This report is informational - no build or
 publish is gated on it.

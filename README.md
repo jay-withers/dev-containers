@@ -188,7 +188,16 @@ It is the final job in the publish run and gates nothing: every image is tagged 
 The report goes two places:
 
 - the **workflow run summary**, in full
-- a **tracked GitHub issue** labelled `vulnerability-report`, which is what reaches your inbox. Each run posts a comment (GitHub emails subscribers on new issues and new comments, but *not* on body edits) and refreshes the issue body so the issue itself always shows the latest run — the body is also where the next run reads the previous state from, to report what changed. The first run assigns the issue to the repo owner, which is what subscribes you. Close the issue and the next run opens a fresh one — no secrets, no SMTP configuration.
+- a **tracked GitHub issue** labelled `vulnerability-report`, which is what reaches your inbox. The first run assigns the issue to the repo owner, which is what subscribes you. Close the issue and the next run opens a fresh one — no secrets, no SMTP configuration.
+
+GitHub emails subscribers on new issues and new comments, but *not* on body edits, and that split is what the workflow is built around:
+
+- the **issue body** always holds the full report, refreshed every run. It is also where the next run reads the previous state from.
+- the **comment** is the notification, so it carries a short digest — the headline, what changed since last time, and the per-image summary — rather than the whole report. Mail clients don't collapse `<details>`, so commenting the full report means posting every CVE table into your inbox.
+- the **issue title** carries the numbers (`… — 5 to fix, 2 new`), because the title is the subject line of every notification the issue sends. The issue is always looked up by label, never by title, so it is free to change.
+- a run where **nothing appeared and nothing cleared posts no comment at all** — it updates the body silently. An email therefore means something actually moved. A failed scan always comments, since incomplete numbers are worth knowing about.
+
+That matters more than it sounds: `cd-scan` runs on every publish, not just the weekly one, so before this the average Renovate merge generated a report email identical to the last.
 
 To get the email, GitHub notifications for **Issues** must be enabled on your account (Settings → Notifications → Subscriptions), which is the default for issues you're assigned to or participating in.
 
@@ -226,7 +235,7 @@ IGNORE_PKGS= MAX_ROWS=500 make scan-images        # everything, kernel headers i
 PREVIOUS_REPORT=old.md make scan-images           # diff against an earlier report
 ```
 
-The script takes `REPO`, `TAG`, `PLATFORMS`, `IMAGES`, `IGNORE_PKGS`, `MAX_ROWS`, `PREVIOUS_REPORT`, and `TRIVY_IMAGE` as environment overrides — see the header of [scripts/scan-images.sh](scripts/scan-images.sh). Images are discovered from the `images/` directory, so a new image is scanned with no change here. The workflow takes the image `tag` as a `workflow_dispatch` input.
+The script takes `REPO`, `TAG`, `PLATFORMS`, `IMAGES`, `IGNORE_PKGS`, `MAX_ROWS`, `PREVIOUS_REPORT`, `DIGEST_FILE`, `META_FILE`, and `TRIVY_IMAGE` as environment overrides — see the header of [scripts/scan-images.sh](scripts/scan-images.sh). Images are discovered from the `images/` directory, so a new image is scanned with no change here. The workflow takes the image `tag` as a `workflow_dispatch` input.
 
 Trivy itself is intentionally installed at `latest` rather than pinned: no Renovate manager in this repo bumps an action's version input, so a pin would go stale and quietly stop detecting new CVEs. Each report records the exact Trivy version that produced it.
 
