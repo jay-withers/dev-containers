@@ -6,7 +6,7 @@ A catalog of VS Code dev container images for Azure infrastructure development. 
 
 | Image       | Registry path                                  | Tooling on top of base                                                        |
 | ----------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
-| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, PowerShell, Docker CLI, psql, pre-commit, general CLI utilities |
+| `base`      | `ghcr.io/jay-withers/dev-containers/base`      | Azure CLI, Node.js, PowerShell, Docker CLI, psql, pre-commit, shellcheck, general CLI utilities |
 | `terraform` | `ghcr.io/jay-withers/dev-containers/terraform` | + tflint, checkov, terraform-docs, tfenv                                      |
 | `k8s`       | `ghcr.io/jay-withers/dev-containers/k8s`       | + kubectl, kubectx, helm, k9s                                                 |
 
@@ -69,7 +69,7 @@ It needs root — hence `sudo`, which the `vscode` user has passwordless — and
 
 ```text
 images/
-  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, PowerShell, Docker CLI, psql, pre-commit, general CLI utilities
+  base/Dockerfile        # shared: ubuntu, Azure CLI, Node.js, PowerShell, Docker CLI, psql, pre-commit, shellcheck, general CLI utilities
   base/smoke-tests       # commands proving the base tooling works (see Smoke tests below)
   base/docker-socket-setup.sh  # container-start helper granting non-root access to the mounted Docker socket
   terraform/Dockerfile   # FROM base + tflint, checkov, terraform-docs, tfenv
@@ -83,7 +83,7 @@ Makefile                 # setup / lint / build / smoke-test targets (run `make 
 
 ## Tooling versions
 
-All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov and pre-commit, which publish no checksum file, are instead verified against the SHA256 digest reported by the GitHub release API). Azure CLI, ble.sh, and the Docker CLI have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest — and because the Azure CLI `.deb` and the Docker CLI tarball differ per architecture, each carries one URL and digest per architecture. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
+All tools are installed from version-pinned URLs and verified at build time against the checksum the upstream project publishes for that version (checkov, pre-commit and shellcheck, which publish no checksum file, are instead verified against the SHA256 digest reported by the GitHub release API). Azure CLI, ble.sh, and the Docker CLI have no upstream checksum, so they stay pinned to a hand-maintained `@sha256:` digest — and because the Azure CLI `.deb` and the Docker CLI tarball differ per architecture, each carries one URL and digest per architecture. In the `terraform` image, the Terraform version is managed by tfenv via a `.terraform-version` file in the consuming repo's workspace root.
 
 Each tool ARG holds the URL of the `arm64` asset, and the install step rewrites that architecture token to match the architecture being built (read from BuildKit's `TARGETARCH`). Upstream naming is not consistent — Node and PowerShell publish `x64`, kubectx publishes `x86_64`, checkov publishes `X86_64`, and the Docker CLI and compose pair `x86_64` with `aarch64` (the only tools that rename the arm64 side as well), where most projects use `amd64` — so those tools map the token explicitly. Keeping the version in a literal URL is what lets Renovate's custom managers find and bump it.
 
@@ -102,6 +102,7 @@ Shell (bash) tab completion is enabled for: Azure CLI, GitHub CLI, Docker, kubec
 | Node.js        | 24.16.0      | base      |
 | PowerShell     | 7.6.5        | base      |
 | pre-commit     | 4.6.2        | base      |
+| shellcheck     | 0.11.0       | base      |
 | Docker CLI     | 29.7.2       | base      |
 | docker buildx  | 0.37.0       | base      |
 | docker compose | 5.5.0        | base      |

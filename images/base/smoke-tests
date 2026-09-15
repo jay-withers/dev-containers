@@ -9,6 +9,7 @@ gh --version
 node --version
 pwsh --version
 pre-commit --version
+shellcheck --version
 dig -v
 jq --version
 psql --version

@@ -39,6 +39,9 @@ ARG NODE_URL="https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-arm64.tar.xz"
 ARG PWSH_URL="https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-arm64.tar.gz"
 # pre-commit ships a single architecture-independent .pyz zipapp.
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v4.6.2/pre-commit-4.6.2.pyz"
+# shellcheck names its x86-64 asset "x86_64" and its 64-bit Arm one "aarch64",
+# so — like the Docker CLI and compose — both sides of the token are mapped.
+ARG SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz"
 # The PostgreSQL project's apt repository signing key. Architecture-independent,
 # no version in the URL, so there is nothing for Renovate to bump — it is pinned
 # to a hand-maintained @sha256: digest like the other unversioned downloads.
@@ -142,6 +145,39 @@ RUN --mount=type=secret,id=gh_token \
     && install -m 0755 "/tmp/${FILE}" /usr/local/bin/pre-commit \
     && rm "/tmp/${FILE}" \
     && pre-commit --version
+
+# shellcheck — in base rather than the terraform image because what needs it is
+# actionlint, and every repo here has workflows. actionlint shells out to
+# shellcheck to lint the `run:` blocks inside them, but **only if the binary is
+# on PATH, and skips that half of its job silently otherwise** — so an image
+# without it lints workflow shell not at all, and `pre-commit run` passes
+# locally while CI fails. A repo having a shellcheck *hook* does not help:
+# shellcheck-py installs into its own isolated hook environment, which is not
+# on PATH for the actionlint hook.
+#
+# No upstream checksum file, so verify against the sha256 digest the GitHub API
+# reports for the release asset, as checkov and pre-commit do. The API call is
+# authenticated when a gh_token secret is mounted (CI) to avoid unauthenticated
+# rate limits, and falls back to an anonymous request otherwise (local builds).
+RUN --mount=type=secret,id=gh_token \
+    case "${TARGETARCH}" in \
+        amd64) ARCH="x86_64" ;; \
+        arm64) ARCH="aarch64" ;; \
+        *) echo "unsupported TARGETARCH '${TARGETARCH}' (expected amd64 or arm64)" >&2; exit 1 ;; \
+    esac; \
+    URL="$(printf '%s' "${SHELLCHECK_URL}" | sed "s/linux\.aarch64/linux.${ARCH}/")"; \
+    FILE="${URL##*/}"; \
+    TAG="${URL#*/download/}"; TAG="${TAG%%/*}"; \
+    API="https://api.github.com/repos/koalaman/shellcheck/releases/tags/${TAG}"; \
+    TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || true)"; \
+    curl -fsSL "${URL}" -o "/tmp/${FILE}" \
+    && if [ -n "${TOKEN}" ]; then META="$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "${API}")"; else META="$(curl -fsSL "${API}")"; fi \
+    && SHA="$(printf '%s' "${META}" | python3 -c "import sys, json; print(next(a['digest'].split(':')[1] for a in json.load(sys.stdin)['assets'] if a['name'] == '${FILE}'))")" \
+    && (cd /tmp && echo "${SHA}  ${FILE}" | sha256sum -c) \
+    && tar -xJ -C /usr/local/bin --strip-components=1 -f "/tmp/${FILE}" "shellcheck-${TAG}/shellcheck" \
+    && chmod +x /usr/local/bin/shellcheck \
+    && rm "/tmp/${FILE}" \
+    && shellcheck --version
 
 # node — verified against the release's SHASUMS256.txt, which covers every
 # architecture in one file. Node names its x86-64 build "x64", not "amd64".
