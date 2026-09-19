@@ -16,7 +16,7 @@ jobs:
   # new commits), so we compute the bump ourselves rather than via the shared
   # release template, which only tags when there are new commits.
   tag:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     outputs:
