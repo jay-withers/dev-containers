@@ -9,4 +9,4 @@ permissions:
 
 jobs:
   pre-commit:
-    uses: jay-withers/workflows/.github/workflows/pre-commit.yml@1f4d0ce8f5c5565d003f5f70dc7c174912206734 # v1.0.0
+    uses: jay-withers/workflows/.github/workflows/pre-commit.yml@a4133d77f379bc1f3cd69870a75542facf306567 # v1.4.2
