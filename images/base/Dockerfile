@@ -34,8 +34,8 @@ ARG DOCKER_CLI_URL_ARM64="https://download.docker.com/linux/static/stable/aarch6
 # build time against the checksum the upstream project publishes for that version.
 ARG BUILDX_URL="https://github.com/docker/buildx/releases/download/v0.37.0/buildx-v0.37.0.linux-arm64"
 ARG COMPOSE_URL="https://github.com/docker/compose/releases/download/v5.5.0/docker-compose-linux-aarch64"
-ARG GH_URL="https://github.com/cli/cli/releases/download/v2.100.0/gh_2.100.0_linux_arm64.tar.gz"
-ARG NODE_URL="https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-arm64.tar.xz"
+ARG GH_URL="https://github.com/cli/cli/releases/download/v2.101.0/gh_2.101.0_linux_arm64.tar.gz"
+ARG NODE_URL="https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-arm64.tar.xz"
 ARG PWSH_URL="https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-arm64.tar.gz"
 # pre-commit ships a single architecture-independent .pyz zipapp.
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v4.6.2/pre-commit-4.6.2.pyz"
