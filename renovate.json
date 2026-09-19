@@ -2,7 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "autoApprove": true,
   "extends": [
-    "github>jay-withers/template-renovate",
-    "github>jay-withers/template-renovate:dev-container"
+    "github>jay-withers/renovate",
+    "github>jay-withers/renovate:dev-container"
   ]
 }
