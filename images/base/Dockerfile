@@ -3,6 +3,21 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0
 # Shared base image for all dev containers in this repo.
 # Specialised images (terraform, k8s, ...) build FROM this.
 
+# Dev container image metadata (https://containers.dev/implementors/spec/#image-metadata):
+# extensions listed here are installed automatically in every consuming repo's
+# devcontainer.json that references the image via "image:", merged in on top
+# of whatever the consuming repo's own "customizations.vscode.extensions"
+# specifies. Adding a tool means editing this one array, not every consuming
+# repo's devcontainer.json.
+#
+# LABELs are inherited down a FROM chain unless a child image sets the same
+# key again, so this covers terraform, k8s, and any future image built FROM
+# base without repeating it there. A leaf image that wants an extension of its
+# own (e.g. a Terraform-specific one on the terraform image) needs its own
+# devcontainer.metadata LABEL restating this list plus its addition — a child
+# LABEL replaces the parent's value for that key rather than merging with it.
+LABEL devcontainer.metadata='[{"customizations":{"vscode":{"extensions":["ms-python.python"]}}}]'
+
 # A UTF-8 locale keeps interactive tooling (notably ble.sh, below) happy and
 # ensures correct handling of non-ASCII output. C.UTF-8 needs no locale-gen.
 ENV LANG=C.UTF-8

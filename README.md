@@ -31,6 +31,16 @@ Add a `.devcontainer/devcontainer.json` that references the published image:
 
 For the `terraform` image, pin a Terraform version by adding a `.terraform-version` file to your workspace root; install it with `tfenv install` (e.g. from a `postCreateCommand`).
 
+### Extensions installed automatically
+
+`images/base/Dockerfile` carries a [dev container image metadata](https://containers.dev/implementors/spec/#image-metadata) `LABEL` declaring VS Code extensions that get installed in **every** consuming repo automatically — merged into the consuming repo's own `customizations.vscode.extensions` at container build time, with no change needed on the consuming repo's side:
+
+| Extension           | Purpose                  |
+| ------------------- | ------------------------ |
+| `ms-python.python`  | Python language support  |
+
+Because Docker `LABEL`s are inherited down a `FROM` chain, this single label on `base` covers `terraform` and `k8s` too, and any future image built `FROM` base. To add another extension for everyone, add its ID to that one array in `images/base/Dockerfile`. A leaf image that needs an extension of its own has to restate this list plus its addition in its own `devcontainer.metadata` label, since a child `LABEL` replaces the parent's value for that key rather than merging with it.
+
 To pin to a specific image version rather than `latest`, use a semver tag:
 
 ```json
