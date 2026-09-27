@@ -1,5 +1,14 @@
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae
 
+# Fail a RUN's pipe if any stage of it fails, not just the last one — without
+# this, e.g. `curl ... | sha256sum -c` swallows a broken curl silently.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Every download below verifies its checksum from here, so cwd stays /tmp for
+# the rest of the build stage — reset back to the inherited default ("/",
+# below) right before USER vscode so the final image's cwd is unaffected.
+WORKDIR /tmp
+
 # Shared base image for all dev containers in this repo.
 # Specialised images (terraform, k8s, ...) build FROM this.
 
@@ -89,6 +98,7 @@ ARG PGDG_CLIENT_MAJOR="18"
 # of the originals in the base image's own layers rather than replacing them —
 # measured at ~126MB uncompressed for the ~115 packages upgraded. That buys
 # patched apt packages, which for an image people develop in is worth it.
+# hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
@@ -116,6 +126,7 @@ RUN apt-get update \
 # The suite is derived from the base image's own codename rather than hardcoded,
 # so moving to a newer Ubuntu picks up the matching PGDG suite instead of
 # silently installing noble packages on a newer release.
+# hadolint ignore=DL3008
 RUN URL="${PGDG_SIGNING_ASC_URL%@sha256:*}" \
     && SHA="${PGDG_SIGNING_ASC_URL##*@sha256:}" \
     && curl -fsSL "${URL}" -o /usr/share/keyrings/pgdg.asc \
@@ -137,7 +148,7 @@ RUN case "${TARGETARCH}" in \
     && URL="${SPEC%@sha256:*}" \
     && SHA="${SPEC##*@sha256:}" \
     && curl -fsSL "${URL}" -o /tmp/azure-cli.deb \
-    && (cd /tmp && echo "${SHA}  azure-cli.deb" | sha256sum -c) \
+    && echo "${SHA}  azure-cli.deb" | sha256sum -c \
     && apt-get update && apt-get install -y --no-install-recommends /tmp/azure-cli.deb \
     && rm /tmp/azure-cli.deb \
     && rm -rf /var/lib/apt/lists/* \
@@ -156,7 +167,7 @@ RUN --mount=type=secret,id=gh_token \
     curl -fsSL "${PRE_COMMIT_URL}" -o "/tmp/${FILE}" \
     && if [ -n "${TOKEN}" ]; then META="$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "${API}")"; else META="$(curl -fsSL "${API}")"; fi \
     && SHA="$(printf '%s' "${META}" | python3 -c "import sys, json; print(next(a['digest'].split(':')[1] for a in json.load(sys.stdin)['assets'] if a['name'] == '${FILE}'))")" \
-    && (cd /tmp && echo "${SHA}  ${FILE}" | sha256sum -c) \
+    && echo "${SHA}  ${FILE}" | sha256sum -c \
     && install -m 0755 "/tmp/${FILE}" /usr/local/bin/pre-commit \
     && rm "/tmp/${FILE}" \
     && pre-commit --version
@@ -188,7 +199,7 @@ RUN --mount=type=secret,id=gh_token \
     curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && if [ -n "${TOKEN}" ]; then META="$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "${API}")"; else META="$(curl -fsSL "${API}")"; fi \
     && SHA="$(printf '%s' "${META}" | python3 -c "import sys, json; print(next(a['digest'].split(':')[1] for a in json.load(sys.stdin)['assets'] if a['name'] == '${FILE}'))")" \
-    && (cd /tmp && echo "${SHA}  ${FILE}" | sha256sum -c) \
+    && echo "${SHA}  ${FILE}" | sha256sum -c \
     && tar -xJ -C /usr/local/bin --strip-components=1 -f "/tmp/${FILE}" "shellcheck-${TAG}/shellcheck" \
     && chmod +x /usr/local/bin/shellcheck \
     && rm "/tmp/${FILE}" \
@@ -205,7 +216,7 @@ RUN case "${TARGETARCH}" in \
     && FILE="${URL##*/}" \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && curl -fsSL "${URL%/*}/SHASUMS256.txt" -o /tmp/SHASUMS256.txt \
-    && (cd /tmp && sha256sum --ignore-missing -c SHASUMS256.txt) \
+    && sha256sum --ignore-missing -c SHASUMS256.txt \
     && tar -xJ -C /usr/local --strip-components=1 -f "/tmp/${FILE}" \
     && rm "/tmp/${FILE}" /tmp/SHASUMS256.txt \
     && node --version
@@ -228,7 +239,7 @@ RUN case "${TARGETARCH}" in \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && curl -fsSL "${URL%/*}/hashes.sha256" -o /tmp/pwsh.hashes.sha256.utf16 \
     && iconv -f UTF-16 -t UTF-8 /tmp/pwsh.hashes.sha256.utf16 > /tmp/pwsh.hashes.sha256 \
-    && (cd /tmp && sha256sum --ignore-missing -c pwsh.hashes.sha256) \
+    && sha256sum --ignore-missing -c pwsh.hashes.sha256 \
     && mkdir -p /opt/microsoft/powershell/7 \
     && tar -xz -C /opt/microsoft/powershell/7 -f "/tmp/${FILE}" \
     && rm "/tmp/${FILE}" /tmp/pwsh.hashes.sha256 /tmp/pwsh.hashes.sha256.utf16 \
@@ -246,7 +257,7 @@ RUN case "${TARGETARCH}" in \
     && FILE="${URL##*/}" \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && curl -fsSL "${URL%/*}/${FILE%%_linux_*}_checksums.txt" -o /tmp/gh.checksums.txt \
-    && (cd /tmp && sha256sum --ignore-missing -c gh.checksums.txt) \
+    && sha256sum --ignore-missing -c gh.checksums.txt \
     && tar -xz -C /usr/local/bin --strip-components=2 -f "/tmp/${FILE}" "${FILE%.tar.gz}/bin/gh" \
     && rm "/tmp/${FILE}" /tmp/gh.checksums.txt \
     && gh --version \
@@ -270,7 +281,7 @@ RUN case "${TARGETARCH}" in \
     && URL="${SPEC%@sha256:*}" \
     && SHA="${SPEC##*@sha256:}" \
     && curl -fsSL "${URL}" -o /tmp/docker.tgz \
-    && (cd /tmp && echo "${SHA}  docker.tgz" | sha256sum -c) \
+    && echo "${SHA}  docker.tgz" | sha256sum -c \
     && tar -xz -C /usr/local/bin --strip-components=1 -f /tmp/docker.tgz docker/docker \
     && rm /tmp/docker.tgz \
     && docker --version \
@@ -293,11 +304,11 @@ RUN case "${TARGETARCH}" in \
     && COMPOSE="$(printf '%s' "${COMPOSE_URL}" | sed "s/linux-aarch64/linux-${COMPOSE_ARCH}/")" \
     && curl -fsSL "${BUILDX}" -o "/tmp/${BUILDX##*/}" \
     && curl -fsSL "${BUILDX%/*}/checksums.txt" -o /tmp/buildx.checksums.txt \
-    && (cd /tmp && sha256sum --ignore-missing -c buildx.checksums.txt) \
+    && sha256sum --ignore-missing -c buildx.checksums.txt \
     && install -m 0755 "/tmp/${BUILDX##*/}" "${PLUGINS}/docker-buildx" \
     && curl -fsSL "${COMPOSE}" -o "/tmp/${COMPOSE##*/}" \
     && curl -fsSL "${COMPOSE%/*}/checksums.txt" -o /tmp/compose.checksums.txt \
-    && (cd /tmp && sha256sum --ignore-missing -c compose.checksums.txt) \
+    && sha256sum --ignore-missing -c compose.checksums.txt \
     && install -m 0755 "/tmp/${COMPOSE##*/}" "${PLUGINS}/docker-compose" \
     && rm "/tmp/${BUILDX##*/}" "/tmp/${COMPOSE##*/}" \
         /tmp/buildx.checksums.txt /tmp/compose.checksums.txt \
@@ -329,7 +340,7 @@ RUN URL="${BLESH_URL%@sha256:*}" \
     && SHA="${BLESH_URL##*@sha256:}" \
     && FILE="${URL##*/}" \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
-    && (cd /tmp && echo "${SHA}  ${FILE}" | sha256sum -c) \
+    && echo "${SHA}  ${FILE}" | sha256sum -c \
     && mkdir -p /usr/share/blesh \
     && tar -xJ -C /usr/share/blesh --strip-components=1 -f "/tmp/${FILE}" \
     && rm -f "/tmp/${FILE}" \
@@ -337,5 +348,9 @@ RUN URL="${BLESH_URL%@sha256:*}" \
     && install -d -o vscode -g vscode /home/vscode/.cache \
     && printf '\n# Enable ble.sh: inline autosuggestions from history/completion\n[[ $- == *i* && -f /usr/share/blesh/ble.sh ]] && source /usr/share/blesh/ble.sh\n' \
         >> /home/vscode/.bashrc
+
+# Restore the cwd this image inherited before the /tmp WORKDIR above — the
+# parent sets none, which Docker treats the same as "/".
+WORKDIR /
 
 USER vscode

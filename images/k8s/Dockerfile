@@ -2,6 +2,10 @@
 ARG BASE_IMAGE="ghcr.io/jay-withers/dev-containers/base:latest"
 FROM ${BASE_IMAGE}
 
+# Fail a RUN's pipe if any stage of it fails, not just the last one — without
+# this, e.g. `curl ... | sha256sum -c` swallows a broken curl silently.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Set automatically by BuildKit to the architecture being built for (amd64 or
 # arm64). The downloads below are architecture-specific: each URL is written
 # with the arm64 asset name, and the install step rewrites that token to
@@ -21,6 +25,11 @@ ARG KUBECTX_URL="https://github.com/ahmetb/kubectx/releases/download/v0.11.0/kub
 
 USER root
 
+# Every download below verifies its checksum from here, so cwd stays /tmp for
+# the rest of the build stage — reset back to "/" right before USER vscode so
+# the final image's cwd is unaffected.
+WORKDIR /tmp
+
 # kubectl — verified against the release's kubectl.sha256 (bare digest)
 RUN case "${TARGETARCH}" in \
         amd64|arm64) ARCH="${TARGETARCH}" ;; \
@@ -29,7 +38,7 @@ RUN case "${TARGETARCH}" in \
     && URL="$(printf '%s' "${KUBECTL_URL}" | sed "s|/linux/arm64/|/linux/${ARCH}/|")" \
     && curl -fsSL "${URL}" -o /tmp/kubectl \
     && curl -fsSL "${URL}.sha256" -o /tmp/kubectl.sha256 \
-    && (cd /tmp && echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c) \
+    && echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c \
     && install -m 0755 /tmp/kubectl /usr/local/bin/kubectl \
     && rm /tmp/kubectl /tmp/kubectl.sha256 \
     && kubectl version --client \
@@ -46,7 +55,7 @@ RUN case "${TARGETARCH}" in \
     && FILE="${URL##*/}" \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && curl -fsSL "${URL%/*}/checksums.txt" -o /tmp/kubectx.checksums.txt \
-    && (cd /tmp && sha256sum --ignore-missing -c kubectx.checksums.txt) \
+    && sha256sum --ignore-missing -c kubectx.checksums.txt \
     && tar -xz -C /usr/local/bin -f "/tmp/${FILE}" kubectx \
     && rm "/tmp/${FILE}" /tmp/kubectx.checksums.txt \
     && kubectx --version
@@ -61,7 +70,7 @@ RUN case "${TARGETARCH}" in \
     && FILE="${URL##*/}" \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && curl -fsSL "${URL}.sha256sum" -o /tmp/helm.sha256sum \
-    && (cd /tmp && sha256sum --ignore-missing -c helm.sha256sum) \
+    && sha256sum --ignore-missing -c helm.sha256sum \
     && tar -xz -C /usr/local/bin --strip-components=1 -f "/tmp/${FILE}" "linux-${ARCH}/helm" \
     && rm "/tmp/${FILE}" /tmp/helm.sha256sum \
     && helm version \
@@ -77,9 +86,12 @@ RUN case "${TARGETARCH}" in \
     && FILE="${URL##*/}" \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && curl -fsSL "${URL%/*}/checksums.sha256" -o /tmp/k9s.checksums.sha256 \
-    && (cd /tmp && sha256sum --ignore-missing -c k9s.checksums.sha256) \
+    && sha256sum --ignore-missing -c k9s.checksums.sha256 \
     && tar -xz -C /usr/local/bin -f "/tmp/${FILE}" k9s \
     && rm "/tmp/${FILE}" /tmp/k9s.checksums.sha256 \
     && k9s version
+
+# Restore the cwd inherited from the base image before the /tmp WORKDIR above.
+WORKDIR /
 
 USER vscode

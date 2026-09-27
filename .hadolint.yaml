@@ -1,0 +1,9 @@
+# DL3066 (non-numeric user-id may not be resolvable by host system): USER is
+# set to the named "vscode"/"root" users the base devcontainer image ships.
+# A numeric UID is not a safe substitute here: on this base image vscode's
+# UID has already differed across Ubuntu versions (1000 vs 1001 — see
+# https://github.com/devcontainers/images/issues/1056), so a hardcoded number
+# would silently point at the wrong user if the upstream image changes again,
+# where the name always resolves correctly.
+ignored:
+  - DL3066

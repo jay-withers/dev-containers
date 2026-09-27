@@ -2,6 +2,10 @@
 ARG BASE_IMAGE="ghcr.io/jay-withers/dev-containers/base:latest"
 FROM ${BASE_IMAGE}
 
+# Fail a RUN's pipe if any stage of it fails, not just the last one — without
+# this, e.g. `curl ... | sha256sum -c` swallows a broken curl silently.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Set automatically by BuildKit to the architecture being built for (amd64 or
 # arm64). The downloads below are architecture-specific: each URL is written
 # with the arm64 asset name, and the install step rewrites that token to
@@ -16,6 +20,11 @@ ARG TERRAFORM_DOCS_URL="https://github.com/terraform-docs/terraform-docs/release
 ARG TFLINT_URL="https://github.com/terraform-linters/tflint/releases/download/v0.64.0/tflint_linux_arm64.zip"
 
 USER root
+
+# Every download below verifies its checksum from here, so cwd stays /tmp for
+# the rest of the build stage — reset back to "/" right before USER vscode so
+# the final image's cwd is unaffected.
+WORKDIR /tmp
 
 # checkov — no upstream checksum file, so verify against the sha256 digest the
 # GitHub API reports for the release asset. The API call is authenticated when a
@@ -36,7 +45,7 @@ RUN --mount=type=secret,id=gh_token \
     curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && if [ -n "${TOKEN}" ]; then META="$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "${API}")"; else META="$(curl -fsSL "${API}")"; fi \
     && SHA="$(printf '%s' "${META}" | python3 -c "import sys, json; print(next(a['digest'].split(':')[1] for a in json.load(sys.stdin)['assets'] if a['name'] == '${FILE}'))")" \
-    && (cd /tmp && echo "${SHA}  ${FILE}" | sha256sum -c) \
+    && echo "${SHA}  ${FILE}" | sha256sum -c \
     && unzip "/tmp/${FILE}" -d /usr/local/bin \
     && mv /usr/local/bin/dist/checkov /usr/local/bin/checkov \
     && rm -rf /usr/local/bin/dist \
@@ -54,7 +63,7 @@ RUN case "${TARGETARCH}" in \
     && FILE="${URL##*/}" \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && curl -fsSL "${URL%/*}/checksums.txt" -o /tmp/tflint.checksums.txt \
-    && (cd /tmp && sha256sum --ignore-missing -c tflint.checksums.txt) \
+    && sha256sum --ignore-missing -c tflint.checksums.txt \
     && unzip "/tmp/${FILE}" tflint -d /usr/local/bin \
     && rm "/tmp/${FILE}" /tmp/tflint.checksums.txt \
     && tflint --version
@@ -70,7 +79,7 @@ RUN case "${TARGETARCH}" in \
     && TAG="${URL#*/download/}" && TAG="${TAG%%/*}" \
     && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
     && curl -fsSL "${URL%/*}/terraform-docs-${TAG}.sha256sum" -o /tmp/terraform-docs.sha256sum \
-    && (cd /tmp && sha256sum --ignore-missing -c terraform-docs.sha256sum) \
+    && sha256sum --ignore-missing -c terraform-docs.sha256sum \
     && tar -xz -C /usr/local/bin -f "/tmp/${FILE}" terraform-docs \
     && chmod +x /usr/local/bin/terraform-docs \
     && rm "/tmp/${FILE}" /tmp/terraform-docs.sha256sum \
@@ -82,5 +91,8 @@ RUN git clone --depth=1 https://github.com/tfutils/tfenv.git /home/vscode/.tfenv
     && chown -R vscode:vscode /home/vscode/.tfenv
 
 ENV PATH="/home/vscode/.tfenv/bin:${PATH}"
+
+# Restore the cwd inherited from the base image before the /tmp WORKDIR above.
+WORKDIR /
 
 USER vscode
