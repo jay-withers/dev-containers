@@ -17,7 +17,7 @@ ARG TARGETARCH
 # build time against the checksum the upstream project publishes for that version.
 ARG HELM_URL="https://get.helm.sh/helm-v4.3.0-linux-arm64.tar.gz"
 ARG K9S_URL="https://github.com/derailed/k9s/releases/download/v0.51.0/k9s_Linux_arm64.tar.gz"
-ARG KUBECTL_URL="https://dl.k8s.io/release/v1.37.0/bin/linux/arm64/kubectl"
+ARG KUBECTL_URL="https://dl.k8s.io/release/v1.37.1/bin/linux/arm64/kubectl"
 # kubectx is not tracked by Renovate, so its version is bumped by hand. It does
 # publish a checksums.txt covering every architecture, which is what the install
 # step below verifies against.
