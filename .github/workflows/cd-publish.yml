@@ -105,17 +105,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Tags the version alone first and reads it back from the registry: only
+      # once it lists both architectures does latest, the tag consumers pull,
+      # move onto that exact digest. A single-arch publish fails here with latest
+      # untouched, and before any leaf builds FROM it. Attestation manifests are
+      # listed as unknown/unknown, so they are filtered out of the check.
       - name: Create multi-arch manifest for base
         working-directory: /tmp/digests
         run: |
           image="${{ env.REGISTRY }}/${{ github.repository }}/base"
           refs=()
           for digest in *; do refs+=("${image}@sha256:${digest}"); done
-          docker buildx imagetools create \
-            --tag "${image}:${{ inputs.version }}" \
-            --tag "${image}:latest" \
-            "${refs[@]}"
-          docker buildx imagetools inspect "${image}:${{ inputs.version }}"
+          docker buildx imagetools create --tag "${image}:${{ inputs.version }}" "${refs[@]}"
+          manifest=$(docker buildx imagetools inspect "${image}:${{ inputs.version }}" --format '{{json .Manifest}}')
+          platforms=$(jq -r '.manifests[].platform | select(.os != "unknown") | "\(.os)/\(.architecture)"' <<<"$manifest" | sort -u)
+          for want in linux/amd64 linux/arm64; do
+            grep -qx "$want" <<<"$platforms" ||
+              { echo "::error::${image}:${{ inputs.version }} is missing ${want} (published: $(paste -sd, - <<<"$platforms"))"; exit 1; }
+          done
+          docker buildx imagetools create --tag "${image}:latest" "${image}@$(jq -r .digest <<<"$manifest")"
+          docker buildx imagetools inspect "${image}:latest"
 
   # Leaf images build FROM the freshly published multi-arch base at the same
   # version, so each native runner resolves the base for its own architecture.
@@ -200,17 +209,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Same version-first check as base-merge, so latest only moves once the
+      # published manifest lists both architectures.
       - name: Create multi-arch manifest for ${{ matrix.image }}
         working-directory: /tmp/digests
         run: |
           image="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}"
           refs=()
           for digest in *; do refs+=("${image}@sha256:${digest}"); done
-          docker buildx imagetools create \
-            --tag "${image}:${{ inputs.version }}" \
-            --tag "${image}:latest" \
-            "${refs[@]}"
-          docker buildx imagetools inspect "${image}:${{ inputs.version }}"
+          docker buildx imagetools create --tag "${image}:${{ inputs.version }}" "${refs[@]}"
+          manifest=$(docker buildx imagetools inspect "${image}:${{ inputs.version }}" --format '{{json .Manifest}}')
+          platforms=$(jq -r '.manifests[].platform | select(.os != "unknown") | "\(.os)/\(.architecture)"' <<<"$manifest" | sort -u)
+          for want in linux/amd64 linux/arm64; do
+            grep -qx "$want" <<<"$platforms" ||
+              { echo "::error::${image}:${{ inputs.version }} is missing ${want} (published: $(paste -sd, - <<<"$platforms"))"; exit 1; }
+          done
+          docker buildx imagetools create --tag "${image}:latest" "${image}@$(jq -r .digest <<<"$manifest")"
+          docker buildx imagetools inspect "${image}:latest"
 
   # Report the vulnerabilities in what was just published. Runs last and gates
   # nothing: every image is already tagged and pullable by the time it starts,
