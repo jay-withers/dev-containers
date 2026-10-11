@@ -182,7 +182,7 @@ Each list holds **only what that image adds**: every image is smoke-tested by th
 | `ci-pre-commit`      | Every PR to `main`                        | Installs all tools and runs `pre-commit run --all-files` to validate hooks                           |
 | `ci-container-build` | PRs that change `images/**`               | Builds base, terraform, and k8s for `linux/amd64` and `linux/arm64` on native runners, smoke-testing each image on each architecture in the job that builds it |
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
-| `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and `latest` |
+| `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and then — once the registry confirms it lists both architectures — as `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |
 | `cd-scan`            | Last stage of `cd-publish`, or manual     | Scans the images just published for known vulnerabilities and reports the findings (see below)       |
 | `cd-prune`           | Mondays 08:00 UTC, or run manually        | Prunes old image versions and spent CI PR tags from GHCR (see below)                                 |
