@@ -137,3 +137,28 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
         run: ./scripts/smoke-test.sh "${{ matrix.image }}" "${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}"
+
+  # Single always-reporting job for the ruleset to mark as its required status
+  # check, same shape as the shared terraform.yml workflow's gate job. `base`/
+  # `leaves` are each a single job id behind a matrix, so a failing arch leg
+  # (fail-fast is off) still reports as "failure" on the job as a whole here.
+  # `changes` is included too so a failure in the path filter itself — rather
+  # than a legitimate skip — isn't masked by base/leaves then reporting
+  # "skipped". A docs-only PR skips base/leaves entirely, which must still
+  # count as a pass.
+  ci-container-build:
+    needs: [changes, base, leaves]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify container build jobs
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BASE_RESULT: ${{ needs.base.result }}
+          LEAVES_RESULT: ${{ needs.leaves.result }}
+        run: |
+          echo "changes=$CHANGES_RESULT base=$BASE_RESULT leaves=$LEAVES_RESULT"
+          if [ "$CHANGES_RESULT" = "failure" ] || [ "$BASE_RESULT" = "failure" ] || [ "$LEAVES_RESULT" = "failure" ]; then
+            echo "::error::A container build job failed."
+            exit 1
+          fi
