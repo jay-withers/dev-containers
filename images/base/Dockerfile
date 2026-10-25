@@ -66,6 +66,9 @@ ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v
 # shellcheck names its x86-64 asset "x86_64" and its 64-bit Arm one "aarch64",
 # so — like the Docker CLI and compose — both sides of the token are mapped.
 ARG SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz"
+# uv also names its assets "x86_64"/"aarch64", and publishes a .sha256 beside
+# each one, which the install step verifies against.
+ARG UV_URL="https://github.com/astral-sh/uv/releases/download/0.13.5/uv-aarch64-unknown-linux-gnu.tar.gz"
 # The PostgreSQL project's apt repository signing key. Architecture-independent,
 # no version in the URL, so there is nothing for Renovate to bump — it is pinned
 # to a hand-maintained @sha256: digest like the other unversioned downloads.
@@ -204,6 +207,27 @@ RUN --mount=type=secret,id=gh_token \
     && chmod +x /usr/local/bin/shellcheck \
     && rm "/tmp/${FILE}" \
     && shellcheck --version
+
+# uv — the Python package and project manager every Python repo here builds
+# and tests with (`uv sync`, `uv run`). In the image rather than left to each
+# repo's `make install`, whose `curl | sh` installs into ~/.local/bin: a rebuild
+# wipes that, and a container that never ran it (the factory's worktrees, for
+# one) could not run `make test` at all. Those Makefiles check `command -v uv`
+# first, so they find this one. uvx ships in the same archive.
+RUN case "${TARGETARCH}" in \
+        amd64) ARCH="x86_64" ;; \
+        arm64) ARCH="aarch64" ;; \
+        *) echo "unsupported TARGETARCH '${TARGETARCH}' (expected amd64 or arm64)" >&2; exit 1 ;; \
+    esac \
+    && URL="$(printf '%s' "${UV_URL}" | sed "s/uv-aarch64-/uv-${ARCH}-/")" \
+    && FILE="${URL##*/}" \
+    && curl -fsSL "${URL}" -o "/tmp/${FILE}" \
+    && SHA="$(curl -fsSL "${URL}.sha256" | cut -d' ' -f1)" \
+    && echo "${SHA}  /tmp/${FILE}" | sha256sum -c \
+    && tar -xz -C /usr/local/bin --strip-components=1 -f "/tmp/${FILE}" \
+        "${FILE%.tar.gz}/uv" "${FILE%.tar.gz}/uvx" \
+    && rm "/tmp/${FILE}" \
+    && uv --version
 
 # node — verified against the release's SHASUMS256.txt, which covers every
 # architecture in one file. Node names its x86-64 build "x64", not "amd64".

@@ -10,6 +10,8 @@ node --version
 pwsh --version
 pre-commit --version
 shellcheck --version
+uv --version
+uvx --version
 dig -v
 jq --version
 psql --version
