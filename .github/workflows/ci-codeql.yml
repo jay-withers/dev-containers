@@ -1,0 +1,36 @@
+name: ci-codeql
+
+# CodeQL code scanning of this repository's GitHub Actions workflows, via the
+# shared workflow. Workflows are code that runs with this repository's token
+# and, in some, Azure credentials: CodeQL traces untrusted input (a PR title, a
+# branch name, a caller's input) into `run:` scripts and checkouts, the
+# injection bugs actionlint does not look for. Results land in Security ->
+# Code scanning and as pull request annotations; the job is green whatever it
+# finds.
+on:
+  pull_request:
+    branches: [main]
+  # main too: code scanning compares a pull request against the default
+  # branch's results, so without a baseline every alert looks new and fixed
+  # ones are never closed.
+  push:
+    branches: [main]
+  # Weekly, so unchanged workflows are re-checked against CodeQL's growing
+  # queries.
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  # security-events: write uploads the results; the shared workflow declares no
+  # permissions of its own, so this grant is the whole token.
+  codeql:
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    uses: jay-withers/workflows/.github/workflows/codeql.yml@c3cb744bf5ded408403142ab2ad28b5cdefe08c1 # v1.12.0
+    with:
+      languages: '["actions"]'
