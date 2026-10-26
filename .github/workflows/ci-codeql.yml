@@ -31,6 +31,6 @@ jobs:
       contents: read
       actions: read
       security-events: write
-    uses: jay-withers/workflows/.github/workflows/codeql.yml@b698317b1e5a71597aa412b58d354f15f6c21d77 # v1.14.0
+    uses: jay-withers/workflows/.github/workflows/codeql.yml@0d87a911bdebd09f7b673058d2fb7c6f5b8d862b # v1.14.2
     with:
       languages: '["actions"]'
