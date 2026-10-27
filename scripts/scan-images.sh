@@ -389,6 +389,13 @@ CLEARED_COUNT=0
 # "nothing changed" - a caller deciding whether to notify has to tell them
 # apart, or the very first run would go out silently.
 CHANGED="unknown"
+# Whether anything a rebuild acts on moved: apt findings appearing or clearing.
+# Vendored findings change with every upstream release and every Trivy DB
+# refresh - the same CVE in the same eight k8s binaries was reported cleared
+# and then new again eight hours apart, with neither release touching them -
+# and nothing in this repo can fix them, so they update the report but do not
+# send an email.
+NOTIFY="unknown"
 
 if [[ -n "${PREVIOUS_REPORT:-}" && -r "${PREVIOUS_REPORT}" ]]; then
   STATE_PREV="$(sed -n 's/^<!-- scan-state:\(.*\) -->$/\1/p' "${PREVIOUS_REPORT}" | tail -1)"
@@ -399,6 +406,12 @@ if [[ -n "${PREVIOUS_REPORT:-}" && -r "${PREVIOUS_REPORT}" ]]; then
       jq -r --argjson now "${STATE_NOW}" '[(($now - .) | length), ((. - $now) | length)] | @tsv' <<<"${STATE_PREV}"
     )"
     CHANGED=$( ((NEW_COUNT + CLEARED_COUNT > 0)) && echo true || echo false )
+    OS_MOVED="$(
+      jq -r --argjson now "${STATE_NOW}" '
+        [($now - .), (. - $now)] | add | map(select(startswith("os|"))) | length
+      ' <<<"${STATE_PREV}"
+    )"
+    NOTIFY=$( ((OS_MOVED > 0)) && echo true || echo false )
 
     # $limit rows in the full report, a shorter list in the digest: the digest
     # is read in an inbox, where a hundred-line list is the same as no list.
@@ -473,6 +486,7 @@ if [[ -n "${META_FILE:-}" ]]; then
     echo "NEW_COUNT=${NEW_COUNT}"
     echo "CLEARED_COUNT=${CLEARED_COUNT}"
     echo "CHANGED=${CHANGED}"
+    echo "NOTIFY=${NOTIFY}"
     echo "SCAN_FAILED=$(if [[ -n "${SCAN_FAILURES}" ]]; then echo true; else echo false; fi)"
   } >"${META_FILE}"
   echo "meta: ${META_FILE}" >&2
