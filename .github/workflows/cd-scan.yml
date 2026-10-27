@@ -148,7 +148,7 @@ jobs:
 
           # Defaults cover a scan that died before writing its results: with
           # nothing to compare, the run still notifies rather than going quiet.
-          OS_TOTAL="?" NEW_COUNT=0 CHANGED=unknown SCAN_FAILED=true
+          OS_TOTAL="?" NEW_COUNT=0 CHANGED=unknown NOTIFY=unknown SCAN_FAILED=true
           if [[ -s scan.env ]]; then
             # shellcheck disable=SC1091  # written by the scan step
             source scan.env
@@ -199,11 +199,12 @@ jobs:
           gh issue edit "${number}" --title "${title}" --body-file report.md
 
           # Commenting is what sends the email, so it happens only when there
-          # is something to say: findings appeared or cleared, no baseline to
-          # compare against, or a scan that did not run and left the numbers
-          # incomplete. An unchanged week updates the issue silently.
-          if [[ "${CHANGED}" == "false" && "${SCAN_FAILED}" != "true" ]]; then
-            echo "Nothing new and nothing cleared — issue #${number} updated without a comment."
+          # is something to act on: apt findings appeared or cleared, no
+          # baseline to compare against, or a scan that did not run and left
+          # the numbers incomplete. A week where only vendored findings moved
+          # updates the issue silently - those clear upstream, not here.
+          if [[ "${NOTIFY}" == "false" && "${SCAN_FAILED}" != "true" ]]; then
+            echo "No rebuild-fixable change (${NEW_COUNT} new, vendored or unchanged) — issue #${number} updated without a comment."
             exit 0
           fi
 
