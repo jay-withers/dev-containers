@@ -1,0 +1,9 @@
+# Commands run inside the python-app image to prove it is what apps expect, one
+# per line. Read by scripts/smoke-test.sh.
+#
+# A runtime image, so this checks its contract rather than tools: the
+# interpreter runs, the default user is the numeric non-root one, and pip is
+# really gone (Trivy would otherwise flag its vendored packages in every app).
+python --version
+test "$(id -u)" = 10001
+python -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('pip') is not None)"

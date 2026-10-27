@@ -3,9 +3,9 @@ name: ci-container-build
 # Verifies that every image still builds and that its tools actually run, for
 # each architecture we publish. Builds happen on a native runner per
 # architecture (no QEMU), so the smoke tests execute real binaries rather than
-# emulated ones. The base image is pushed under a throwaway per-PR, per-arch tag
-# purely so the leaf jobs on other runners can build FROM it; nothing is
-# published under a release tag.
+# emulated ones. Root images (base, python-app) are pushed under a throwaway
+# per-PR, per-arch tag purely so the leaf jobs on other runners can build FROM
+# them; nothing is published under a release tag.
 on:
   pull_request:
     branches: [main]
@@ -16,7 +16,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  BASE_REPO: ghcr.io/${{ github.repository }}/base
+  IMAGE_REPO: ghcr.io/${{ github.repository }}
 
 jobs:
   changes:
@@ -32,12 +32,16 @@ jobs:
             images:
               - 'images/**'
 
-  base:
+  # Images with no parent in this repo. Each leaf below names the root it builds
+  # FROM, so adding a root means adding it here and pointing its leaves at it.
+  roots:
     needs: changes
     if: needs.changes.outputs.images == 'true'
     strategy:
       fail-fast: false
       matrix:
+        image: [base, python-app]
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             runner: ubuntu-24.04
@@ -62,38 +66,45 @@ jobs:
 
       # Loaded as well as pushed, so the smoke test below can run the image
       # here rather than pulling the tag straight back down again.
-      - name: Build base image for linux/${{ matrix.arch }}
+      - name: Build ${{ matrix.image }} image for linux/${{ matrix.arch }}
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
-          context: images/base
+          context: images/${{ matrix.image }}
           platforms: linux/${{ matrix.arch }}
           push: true
           load: true
           secrets: |
             gh_token=${{ secrets.GITHUB_TOKEN }}
-          tags: ${{ env.BASE_REPO }}:pr-${{ github.run_id }}-${{ matrix.arch }}
-          cache-from: type=gha,scope=base-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=base-${{ matrix.arch }}
+          tags: ${{ env.IMAGE_REPO }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
 
-      # The commands live in images/base/smoke-tests, next to the Dockerfile
+      # The commands live in images/<name>/smoke-tests, next to the Dockerfile
       # that installs the tools, so the same checks can be run locally with
       # `make smoke-test`. Each image is tested in the job that builds it, so a
       # failure names the image that actually broke; the leaf jobs cover only
       # their own additions and never re-test any of this.
-      - name: Smoke test base image on linux/${{ matrix.arch }}
+      - name: Smoke test ${{ matrix.image }} image on linux/${{ matrix.arch }}
         env:
           ARCH: ${{ matrix.arch }}
-        run: ./scripts/smoke-test.sh base "${{ env.BASE_REPO }}:pr-${{ github.run_id }}-${{ matrix.arch }}"
+        run: ./scripts/smoke-test.sh "${{ matrix.image }}" "${{ env.IMAGE_REPO }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}"
 
   leaves:
-    needs: base
-    if: needs.base.result == 'success'
+    needs: roots
+    if: needs.roots.result == 'success'
     strategy:
       fail-fast: false
       matrix:
-        image: [terraform, k8s]
+        image: [terraform, k8s, python-app-builder]
         arch: [amd64, arm64]
+        # `parent` is the root image each leaf builds FROM.
         include:
+          - image: terraform
+            parent: base
+          - image: k8s
+            parent: base
+          - image: python-app-builder
+            parent: python-app
           - arch: amd64
             runner: ubuntu-24.04
           - arch: arm64
@@ -122,43 +133,43 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           load: true
           build-args: |
-            BASE_IMAGE=${{ env.BASE_REPO }}:pr-${{ github.run_id }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.IMAGE_REPO }}/${{ matrix.parent }}:pr-${{ github.run_id }}-${{ matrix.arch }}
           secrets: |
             gh_token=${{ secrets.GITHUB_TOKEN }}
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}
+            ${{ env.IMAGE_REPO }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}
           cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
 
       # Runs images/${{ matrix.image }}/smoke-tests, which lists only what this
-      # image adds on top of base. A new image needs no change here: it is
+      # image adds on top of its parent. A new image needs no change here: it is
       # picked up from its own directory.
       - name: Smoke test ${{ matrix.image }} image on linux/${{ matrix.arch }}
         env:
           ARCH: ${{ matrix.arch }}
-        run: ./scripts/smoke-test.sh "${{ matrix.image }}" "${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}"
+        run: ./scripts/smoke-test.sh "${{ matrix.image }}" "${{ env.IMAGE_REPO }}/${{ matrix.image }}:pr-${{ github.run_id }}-${{ matrix.arch }}"
 
   # Single always-reporting job for the ruleset to mark as its required status
-  # check, same shape as the shared terraform.yml workflow's gate job. `base`/
+  # check, same shape as the shared terraform.yml workflow's gate job. `roots`/
   # `leaves` are each a single job id behind a matrix, so a failing arch leg
   # (fail-fast is off) still reports as "failure" on the job as a whole here.
   # `changes` is included too so a failure in the path filter itself — rather
-  # than a legitimate skip — isn't masked by base/leaves then reporting
-  # "skipped". A docs-only PR skips base/leaves entirely, which must still
+  # than a legitimate skip — isn't masked by roots/leaves then reporting
+  # "skipped". A docs-only PR skips roots/leaves entirely, which must still
   # count as a pass.
   ci-container-build:
-    needs: [changes, base, leaves]
+    needs: [changes, roots, leaves]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Verify container build jobs
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
-          BASE_RESULT: ${{ needs.base.result }}
+          ROOTS_RESULT: ${{ needs.roots.result }}
           LEAVES_RESULT: ${{ needs.leaves.result }}
         run: |
-          echo "changes=$CHANGES_RESULT base=$BASE_RESULT leaves=$LEAVES_RESULT"
-          if [ "$CHANGES_RESULT" = "failure" ] || [ "$BASE_RESULT" = "failure" ] || [ "$LEAVES_RESULT" = "failure" ]; then
+          echo "changes=$CHANGES_RESULT roots=$ROOTS_RESULT leaves=$LEAVES_RESULT"
+          if [ "$CHANGES_RESULT" = "failure" ] || [ "$ROOTS_RESULT" = "failure" ] || [ "$LEAVES_RESULT" = "failure" ]; then
             echo "::error::A container build job failed."
             exit 1
           fi
