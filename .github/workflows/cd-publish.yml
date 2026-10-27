@@ -7,6 +7,9 @@ name: cd-publish
 # architecture (so no QEMU emulation) and pushed by digest with no tag attached.
 # A follow-up merge job then combines the per-architecture digests into a single
 # multi-arch manifest list, published under both the version and latest tags.
+#
+# Root images (base, python-app) build first; each leaf then builds FROM its
+# parent root at the same version.
 on:
   workflow_call:
     inputs:
@@ -29,10 +32,12 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  base:
+  roots:
     strategy:
       fail-fast: false
       matrix:
+        image: [base, python-app]
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             runner: ubuntu-24.04
@@ -55,21 +60,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push base image for linux/${{ matrix.arch }}
+      # REBUILD is consumed by python-app only: a new value per version forces
+      # its apt-get upgrade layer past the GHA cache (see its Dockerfile).
+      - name: Build and push ${{ matrix.image }} image for linux/${{ matrix.arch }}
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
-          context: images/base
+          context: images/${{ matrix.image }}
           platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/base,push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            REBUILD=${{ inputs.version }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
           secrets: |
             gh_token=${{ secrets.GITHUB_TOKEN }}
-          cache-from: type=gha,scope=base-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=base-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
 
       # The merge job needs every architecture's digest. Artifacts are the only
       # way to get a value out of one matrix leg and into a later job, so each
-      # leg writes an empty file named after its digest.
+      # leg writes an empty file named after its digest. The `--` before the
+      # arch is what stops the merge job's `digests-python-app--*` pattern from
+      # also matching python-app-builder's artifacts.
       - name: Record digest
         run: |
           mkdir -p /tmp/digests
@@ -79,20 +90,23 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: digests-base-${{ matrix.arch }}
+          name: digests-${{ matrix.image }}--${{ matrix.arch }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  base-merge:
-    needs: base
+  roots-merge:
+    needs: roots
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: [base, python-app]
     steps:
       - name: Download digests
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: /tmp/digests
-          pattern: digests-base-*
+          pattern: digests-${{ matrix.image }}--*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -110,10 +124,10 @@ jobs:
       # move onto that exact digest. A single-arch publish fails here with latest
       # untouched, and before any leaf builds FROM it. Attestation manifests are
       # listed as unknown/unknown, so they are filtered out of the check.
-      - name: Create multi-arch manifest for base
+      - name: Create multi-arch manifest for ${{ matrix.image }}
         working-directory: /tmp/digests
         run: |
-          image="${{ env.REGISTRY }}/${{ github.repository }}/base"
+          image="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}"
           refs=()
           for digest in *; do refs+=("${image}@sha256:${digest}"); done
           docker buildx imagetools create --tag "${image}:${{ inputs.version }}" "${refs[@]}"
@@ -126,16 +140,23 @@ jobs:
           docker buildx imagetools create --tag "${image}:latest" "${image}@$(jq -r .digest <<<"$manifest")"
           docker buildx imagetools inspect "${image}:latest"
 
-  # Leaf images build FROM the freshly published multi-arch base at the same
-  # version, so each native runner resolves the base for its own architecture.
+  # Leaf images build FROM their freshly published multi-arch parent at the same
+  # version, so each native runner resolves the parent for its own architecture.
   leaves:
-    needs: base-merge
+    needs: roots-merge
     strategy:
       fail-fast: false
       matrix:
-        image: [terraform, k8s]
+        image: [terraform, k8s, python-app-builder]
         arch: [amd64, arm64]
+        # `parent` is the root image each leaf builds FROM.
         include:
+          - image: terraform
+            parent: base
+          - image: k8s
+            parent: base
+          - image: python-app-builder
+            parent: python-app
           - arch: amd64
             runner: ubuntu-24.04
           - arch: arm64
@@ -164,7 +185,7 @@ jobs:
           context: images/${{ matrix.image }}
           platforms: linux/${{ matrix.arch }}
           build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/base:${{ inputs.version }}
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.parent }}:${{ inputs.version }}
           secrets: |
             gh_token=${{ secrets.GITHUB_TOKEN }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
@@ -180,7 +201,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          name: digests-${{ matrix.image }}--${{ matrix.arch }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -190,13 +211,13 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        image: [terraform, k8s]
+        image: [terraform, k8s, python-app-builder]
     steps:
       - name: Download digests
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: /tmp/digests
-          pattern: digests-${{ matrix.image }}-*
+          pattern: digests-${{ matrix.image }}--*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -209,7 +230,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Same version-first check as base-merge, so latest only moves once the
+      # Same version-first check as roots-merge, so latest only moves once the
       # published manifest lists both architectures.
       - name: Create multi-arch manifest for ${{ matrix.image }}
         working-directory: /tmp/digests

@@ -1,0 +1,9 @@
+# Commands run inside the python-app-builder image, one per line. Read by
+# scripts/smoke-test.sh.
+#
+# Only what this image adds on top of python-app. The last line is the point
+# of the image: uv must find the image's own interpreter and never download one.
+uv --version
+uvx --version
+test "$(id -u)" = 0
+test "$(realpath "$(uv python find --no-python-downloads)")" = "$(realpath "$(command -v python)")"
