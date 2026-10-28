@@ -37,6 +37,6 @@ COPY --from=build /placeholder /usr/local/bin/placeholder
 
 USER 10001
 EXPOSE 8080
-# CMD rather than ENTRYPOINT, so `docker run <image> sh -c ...` (the smoke
-# tests) runs that command instead of the server.
-CMD ["/usr/local/bin/placeholder"]
+# ENTRYPOINT, not CMD: an app's `args` (`serve`, `insight --email`) replace
+# CMD but are only passed to an ENTRYPOINT, which ignores them.
+ENTRYPOINT ["/usr/local/bin/placeholder"]

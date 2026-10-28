@@ -117,8 +117,10 @@ for image in ${images}; do
 
     # bash where the image has it (every dev container); a runtime image like
     # placeholder may ship only sh. `sh` itself is the one shell every image has.
+    # The entrypoint is cleared so an image that sets one (placeholder) runs the
+    # checks instead of its own program; the others set none.
     # shellcheck disable=SC2016 # expanded inside the container, not here
-    if docker run --rm "${ref}" sh -c 'exec "$(command -v bash || command -v sh)" -c "$1"' smoke-test "$(container_script "${manifest}")"; then
+    if docker run --rm --entrypoint '' "${ref}" sh -c 'exec "$(command -v bash || command -v sh)" -c "$1"' smoke-test "$(container_script "${manifest}")"; then
         echo "  ${image}: ok"
     else
         echo "smoke-test: ${image} failed" >&2
