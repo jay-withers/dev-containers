@@ -58,7 +58,7 @@ lifecycle {
 }
 ```
 
-It answers 200 on every path, so the app's own probes (`/healthz`, `/api/health`) pass before its first release.
+It answers 200 on every path, so the app's own probes (`/healthz`, `/api/health`) pass before its first release. It ignores any `args`, and in a Container Apps job it exits 0 straight away, so the same image seeds an app's jobs too.
 
 ## Using an image in another repo
 
