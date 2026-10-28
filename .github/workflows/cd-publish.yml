@@ -8,7 +8,7 @@ name: cd-publish
 # A follow-up merge job then combines the per-architecture digests into a single
 # multi-arch manifest list, published under both the version and latest tags.
 #
-# Root images (base, python-app) build first; each leaf then builds FROM its
+# Root images (base, python-app, placeholder) build first; each leaf then builds FROM its
 # parent root at the same version.
 on:
   workflow_call:
@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [base, python-app]
+        image: [base, python-app, placeholder]
         arch: [amd64, arm64]
         include:
           - arch: amd64
@@ -60,7 +60,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # REBUILD is consumed by python-app only: a new value per version forces
+      # REBUILD is consumed by python-app and placeholder only: a new value per version forces
       # its apt-get upgrade layer past the GHA cache (see its Dockerfile).
       - name: Build and push ${{ matrix.image }} image for linux/${{ matrix.arch }}
         id: build
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        image: [base, python-app]
+        image: [base, python-app, placeholder]
     steps:
       - name: Download digests
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8

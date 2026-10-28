@@ -16,12 +16,13 @@ Every image is published as a multi-arch manifest covering `linux/amd64` and `li
 
 ## Runtime images
 
-Two images here are not dev containers: they are the base the Python apps on the shared Container Apps environment build `FROM`, kept here because they need the same publishing, scanning, weekly rebuild and pruning.
+Three images here are not dev containers: two are the base the Python apps on the shared Container Apps environment build `FROM`, and `placeholder` is what an app's Terraform first creates its container app with. They are kept here because they need the same publishing, scanning, weekly rebuild and pruning.
 
 | Image                | Registry path                                           | Contents                                                                                     |
 | -------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `python-app`         | `ghcr.io/jay-withers/dev-containers/python-app`         | `python:3.14-slim-bookworm`, Debian security updates applied, pip removed, non-root uid 10001, `/app/.venv/bin` on `PATH` |
 | `python-app-builder` | `ghcr.io/jay-withers/dev-containers/python-app-builder` | + uv, running as root, with uv set never to download its own Python                          |
+| `placeholder`        | `ghcr.io/jay-withers/dev-containers/placeholder`        | A static Go server on `alpine` answering 200 on every path on `$PORT` (default 8080), non-root uid 10001 |
 
 `python-app-builder` is built `FROM` `python-app` at the same version in the same publish, so a venv built in one runs in the other on the same interpreter. A venv is bound to the minor version that created it. Pin both at the **same version**:
 
@@ -41,6 +42,23 @@ ENTRYPOINT ["<console-script>"]
 The app must set its own `org.opencontainers.image.source` label. `python-app` carries this repo's, and an app image that inherits it is linked to this repository's packages rather than its own.
 
 `apt-get upgrade` in `python-app` re-runs on every publish, because `cd-publish` passes the version as the `REBUILD` build arg. Without that, the weekly rebuild would restore the layer from the GHA cache and republish last week's packages. A fix reaches an app only when that app's Renovate digest PR merges and deploys.
+
+`placeholder` is the image a new app's container app is **created** with, so the first `terraform apply` doesn't depend on a release that doesn't exist yet. Point the container at it, set `PORT` to the ingress target port, and keep the image under `ignore_changes`; the app's own pipeline deploys the real image over it:
+
+```hcl
+container {
+  image = "ghcr.io/jay-withers/dev-containers/placeholder:v1.2.3@sha256:..."
+  env {
+    name  = "PORT"
+    value = local.target_port
+  }
+}
+lifecycle {
+  ignore_changes = [template[0].container[0].image]
+}
+```
+
+It answers 200 on every path, so the app's own probes (`/healthz`, `/api/health`) pass before its first release.
 
 ## Using an image in another repo
 
@@ -116,6 +134,7 @@ images/
   k8s/smoke-tests        # commands proving what k8s adds on top of base
   python-app/            # runtime base for the Python apps (not a dev container)
   python-app-builder/    # FROM python-app + uv, for an app's builder stage
+  placeholder/           # first-revision image for a new container app (not a dev container)
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
 scripts/                 # smoke tests, plus scheduled repo admin (GHCR pruning, image scanning)
 Makefile                 # setup / lint / build / smoke-test targets (run `make help`)
@@ -211,7 +230,7 @@ Each list holds **only what that image adds**: every image is smoke-tested by th
 | Workflow             | When it runs                              | What it does                                                                                         |
 | -------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ci-pre-commit`      | Every PR to `main`                        | Installs all tools and runs `pre-commit run --all-files` to validate hooks                           |
-| `ci-container-build` | PRs that change `images/**`               | Builds the root images (base, python-app), then the leaves FROM them (terraform, k8s, python-app-builder), for `linux/amd64` and `linux/arm64` on native runners, smoke-testing each image on each architecture in the job that builds it |
+| `ci-container-build` | PRs that change `images/**`               | Builds the root images (base, python-app, placeholder), then the leaves FROM them (terraform, k8s, python-app-builder), for `linux/amd64` and `linux/arm64` on native runners, smoke-testing each image on each architecture in the job that builds it |
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and then — once the registry confirms it lists both architectures — as `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |

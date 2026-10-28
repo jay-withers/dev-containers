@@ -115,7 +115,10 @@ for image in ${images}; do
         echo "  architecture ${got}"
     fi
 
-    if docker run --rm "${ref}" bash -c "$(container_script "${manifest}")"; then
+    # bash where the image has it (every dev container); a runtime image like
+    # placeholder may ship only sh. `sh` itself is the one shell every image has.
+    # shellcheck disable=SC2016 # expanded inside the container, not here
+    if docker run --rm "${ref}" sh -c 'exec "$(command -v bash || command -v sh)" -c "$1"' smoke-test "$(container_script "${manifest}")"; then
         echo "  ${image}: ok"
     else
         echo "smoke-test: ${image} failed" >&2
