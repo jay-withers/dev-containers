@@ -3,7 +3,7 @@ name: ci-container-build
 # Verifies that every image still builds and that its tools actually run, for
 # each architecture we publish. Builds happen on a native runner per
 # architecture (no QEMU), so the smoke tests execute real binaries rather than
-# emulated ones. Root images (base, python-app) are pushed under a throwaway
+# emulated ones. Root images (base, python-app, placeholder) are pushed under a throwaway
 # per-PR, per-arch tag purely so the leaf jobs on other runners can build FROM
 # them; nothing is published under a release tag.
 on:
@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [base, python-app]
+        image: [base, python-app, placeholder]
         arch: [amd64, arm64]
         include:
           - arch: amd64

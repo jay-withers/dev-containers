@@ -22,7 +22,7 @@ setup: ## Install the pre-commit git hooks
 lint: ## Run all pre-commit hooks against every file
 	pre-commit run --all-files
 
-build: build-base build-terraform build-k8s build-python-app build-python-app-builder ## Build all images locally
+build: build-base build-terraform build-k8s build-python-app build-python-app-builder build-placeholder ## Build all images locally
 
 build-base: ## Build the base image
 	docker build -t base images/base
@@ -38,6 +38,9 @@ build-python-app: ## Build the python-app runtime image
 
 build-python-app-builder: build-python-app ## Build the python-app-builder image (FROM python-app)
 	docker build --build-arg BASE_IMAGE=python-app -t python-app-builder images/python-app-builder
+
+build-placeholder: ## Build the placeholder app image
+	docker build -t placeholder images/placeholder
 
 smoke-test: ## Run each image's smoke tests (images/<name>/smoke-tests) against the locally built images (args: IMAGES, ARCH)
 	IMAGES="$(IMAGES)" ARCH="$(ARCH)" ./scripts/smoke-test.sh

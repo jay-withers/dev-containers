@@ -1,0 +1,7 @@
+# Commands run inside the placeholder image to prove its contract, one per
+# line. Read by scripts/smoke-test.sh.
+#
+# It runs as the numeric non-root user, and answers 200 on an arbitrary path
+# on the port PORT names (busybox wget exits non-zero on any other status).
+test "$(id -u)" = 10001
+PORT=9123 placeholder & sleep 1; wget -q -O - http://127.0.0.1:9123/any/health/path | grep -q Placeholder
