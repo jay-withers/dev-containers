@@ -47,7 +47,7 @@ The app must set its own `org.opencontainers.image.source` label. `python-app` c
 
 ```hcl
 container {
-  image = "ghcr.io/jay-withers/dev-containers/placeholder:v1.2.3@sha256:..."
+  image = "ghcr.io/jay-withers/dev-containers/placeholder:latest"
   env {
     name  = "PORT"
     value = local.target_port
@@ -57,6 +57,8 @@ lifecycle {
   ignore_changes = [template[0].container[0].image]
 }
 ```
+
+`latest`, unlike every other reference to these images: `cd-prune` deletes all but the last ten releases and never `latest`, so a pinned version would vanish from under the next new app, and the usual case against a moving tag (a re-push deploys nothing) can't apply to an image only ever pulled at create. Set `args`, never `command`: a `command` replaces the placeholder's entrypoint.
 
 It answers 200 on every path, so the app's own probes (`/healthz`, `/api/health`) pass before its first release. It ignores any `args`, and in a Container Apps job it exits 0 straight away, so the same image seeds an app's jobs too.
 
