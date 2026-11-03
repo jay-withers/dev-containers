@@ -58,8 +58,8 @@ ARG DOCKER_CLI_URL_ARM64="https://download.docker.com/linux/static/stable/aarch6
 # build time against the checksum the upstream project publishes for that version.
 ARG BUILDX_URL="https://github.com/docker/buildx/releases/download/v0.37.0/buildx-v0.37.0.linux-arm64"
 ARG COMPOSE_URL="https://github.com/docker/compose/releases/download/v5.5.0/docker-compose-linux-aarch64"
-ARG GH_URL="https://github.com/cli/cli/releases/download/v2.103.2/gh_2.103.2_linux_arm64.tar.gz"
-ARG NODE_URL="https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-arm64.tar.xz"
+ARG GH_URL="https://github.com/cli/cli/releases/download/v2.103.3/gh_2.103.3_linux_arm64.tar.gz"
+ARG NODE_URL="https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tar.xz"
 ARG PWSH_URL="https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-arm64.tar.gz"
 # pre-commit ships a single architecture-independent .pyz zipapp.
 ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v4.7.0/pre-commit-4.7.0.pyz"
@@ -68,7 +68,7 @@ ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v
 ARG SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz"
 # uv also names its assets "x86_64"/"aarch64", and publishes a .sha256 beside
 # each one, which the install step verifies against.
-ARG UV_URL="https://github.com/astral-sh/uv/releases/download/0.13.5/uv-aarch64-unknown-linux-gnu.tar.gz"
+ARG UV_URL="https://github.com/astral-sh/uv/releases/download/0.13.6/uv-aarch64-unknown-linux-gnu.tar.gz"
 # The PostgreSQL project's apt repository signing key. Architecture-independent,
 # no version in the URL, so there is nothing for Renovate to bump — it is pinned
 # to a hand-maintained @sha256: digest like the other unversioned downloads.
