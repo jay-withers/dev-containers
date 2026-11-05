@@ -1,0 +1,106 @@
+name: cd-patch-check
+
+# Daily check for a security fix waiting in Debian that python-app has not
+# picked up yet. When there is one, it dispatches cd-weekly early instead of
+# leaving it until Monday.
+#
+# Why: every app on the shared Container Apps environment builds FROM
+# python-app, and each app's container-build check fails on a HIGH or CRITICAL
+# finding with a fix available. On 2026-11-05, apt 2.6.2 landed mid-week, and
+# market-agent's next PR could not merge until cd-weekly was run by hand. So
+# this checks the same thing that gate checks: OS packages, HIGH and CRITICAL,
+# fixed upstream. Those are exactly what a rebuild clears, because the image
+# runs `apt-get upgrade`. Vendored findings are left to cd-scan's report, since
+# a rebuild does not touch them.
+#
+# Not a second report: cd-scan still writes the weekly report and owns the
+# issue. A quiet day here does nothing and sends nothing. A dispatch shows up
+# as a cd-weekly run, and that run's publish files cd-scan's report as usual.
+on:
+  schedule:
+    # 05:00 UTC, every day except Monday, when cd-weekly rebuilds at 06:00
+    # anyway.
+    - cron: "0 5 * * 0,2-6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  actions: write
+
+concurrency:
+  group: cd-patch-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      # Unpinned for the same reason as in cd-scan: a scanner is only as good
+      # as its newest detection logic.
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: latest
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Both platforms: the fix can land for one architecture's archive before
+      # the other's, and either one failing is enough to block an app.
+      - name: Scan python-app:latest for fixable OS findings
+        id: scan
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/python-app:latest
+        run: |
+          found=0
+          for platform in linux/amd64 linux/arm64; do
+            echo "::group::${IMAGE} (${platform})"
+            trivy image --quiet --scanners vuln --platform "${platform}" \
+              --pkg-types os --severity HIGH,CRITICAL --ignore-unfixed \
+              --format json --output result.json "${IMAGE}"
+            trivy convert --quiet --format table result.json
+            count="$(jq '[.Results[]?.Vulnerabilities[]?] | length' result.json)"
+            echo "::endgroup::"
+            echo "${platform}: ${count} fixable HIGH/CRITICAL OS finding(s)"
+            found=$((found + count))
+          done
+          echo "found=${found}" >> "$GITHUB_OUTPUT"
+          if (( found == 0 )); then
+            echo "Nothing to patch: python-app:latest is clean." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Guards against rebuilding in a loop. If the last release is under a
+      # day old, the rebuild has already happened and did not clear the
+      # finding (the fix is not in Debian's archive for this suite yet, or
+      # Trivy has it wrong). Rebuilding again tomorrow would not help either,
+      # and every release opens a Renovate PR in five apps. A cd-weekly
+      # already queued or running is left to finish.
+      - name: Dispatch cd-weekly
+        if: steps.scan.outputs.found != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          FOUND: ${{ steps.scan.outputs.found }}
+        run: |
+          active="$(gh run list --workflow cd-weekly.yml --limit 5 --json status \
+            --jq '[.[] | select(.status != "completed")] | length')"
+          if (( active > 0 )); then
+            echo "cd-weekly is already running; leaving it to finish." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          published="$(gh release view --json publishedAt --jq .publishedAt)"
+          age=$(( $(date -u +%s) - $(date -u -d "${published}" +%s) ))
+          if (( age < 86400 )); then
+            echo "::warning::${FOUND} fixable finding(s) remain in python-app:latest, but the latest release is only $((age / 3600))h old, so a rebuild has not cleared them. Not rebuilding again."
+            echo "${FOUND} fixable finding(s) remain after a rebuild under a day old; not rebuilding again." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          gh workflow run cd-weekly.yml
+          echo "${FOUND} fixable HIGH/CRITICAL OS finding(s) in python-app:latest: dispatched cd-weekly." | tee -a "$GITHUB_STEP_SUMMARY"
