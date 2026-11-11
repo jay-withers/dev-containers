@@ -37,9 +37,9 @@
 # owner is derived, not maintained in a table here, and a new image or tool
 # needs no change to this script.
 #
-# Detail tables are global, not per-image. Every image is built FROM base, so a
-# per-image table repeats base's findings in each leaf and a per-image total
-# counts them two or three times over; an *Images* column says the same thing
+# Detail tables are global, not per-image. python-app-builder is built FROM
+# python-app, so a per-image table repeats python-app's findings in the builder
+# and a per-image total counts them twice; an *Images* column says the same thing
 # once. Findings are deduplicated on (CVE, package, owner) - the same CVE in two
 # different binaries is two things to fix, so the owner is part of the identity,
 # but the same finding on both architectures is one finding seen twice.
@@ -514,8 +514,8 @@ REPORT
 cat <<REPORT
 ### Fixable by a rebuild
 
-Findings in apt packages. \`images/base/Dockerfile\` runs \`apt-get upgrade\`, so
-publishing a new version clears these - \`cd-weekly\` does that every Monday.
+Findings in OS packages. \`python-app\` runs \`apt-get upgrade\` and \`placeholder\`
+\`apk upgrade\`, so publishing a new version clears these - \`cd-weekly\` does that every Monday.
 
 REPORT
 
@@ -572,8 +572,8 @@ cat <<REPORT
 
 Findings are deduplicated on (CVE, package, owner) across every image and
 platform scanned, and the *Images* and *Platforms* columns say where each was
-seen. Every image is built \`FROM\` base, so listing each leaf separately would
-repeat base's findings two or three times and inflate any total taken across
+seen. \`python-app-builder\` is built \`FROM\` \`python-app\`, so listing each image
+separately would repeat python-app's findings and inflate any total taken across
 them; the per-image columns above are deduplicated within each image.
 
 **Unfixed** counts HIGH/CRITICAL findings with no published fix anywhere -

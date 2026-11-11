@@ -31,8 +31,8 @@
 #
 # Usage:
 #   ./scripts/smoke-test.sh                     # every image in images/, using its local `make build` tag
-#   ./scripts/smoke-test.sh base                # one image, using its local tag
-#   ./scripts/smoke-test.sh base ghcr.io/o/r/base:v1.2.3   # one image, explicit ref
+#   ./scripts/smoke-test.sh python-app          # one image, using its local tag
+#   ./scripts/smoke-test.sh python-app ghcr.io/o/r/python-app:v1.2.3   # one image, explicit ref
 #
 # Env overrides:
 #   IMAGES  space-separated image names to test (default: every directory in
