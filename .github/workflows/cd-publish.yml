@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [base, python-app, placeholder]
+        image: [python-app, placeholder]
         arch: [amd64, arm64]
         include:
           - arch: amd64
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        image: [base, python-app, placeholder]
+        image: [python-app, placeholder]
     steps:
       - name: Download digests
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -147,14 +147,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [terraform, k8s, python-app-builder]
+        image: [python-app-builder]
         arch: [amd64, arm64]
         # `parent` is the root image each leaf builds FROM.
         include:
-          - image: terraform
-            parent: base
-          - image: k8s
-            parent: base
           - image: python-app-builder
             parent: python-app
           - arch: amd64
@@ -211,7 +207,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        image: [terraform, k8s, python-app-builder]
+        image: [python-app-builder]
     steps:
       - name: Download digests
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8

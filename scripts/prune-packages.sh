@@ -9,8 +9,8 @@
 #     vMAJOR.MINOR.PATCH), newest first by semver
 #   - the throwaway `pr-<run_id>-<arch>` tags that ci-container-build pushes,
 #     until they are PR_MAX_AGE_DAYS old. They are only needed for the minutes
-#     between the base and leaf jobs of one CI run, but the age floor means a
-#     prune that happens to land mid-run can't pull the base image out from
+#     between the root and leaf jobs of one CI run, but the age floor means a
+#     prune that happens to land mid-run can't pull the root image out from
 #     under a leaf job that is still building FROM it.
 #   - every version carrying any other tag - `latest`, anything applied by
 #     hand. Unrecognised tags are never touched.

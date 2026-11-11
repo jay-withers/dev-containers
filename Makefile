@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint build build-base build-terraform build-k8s build-python-app build-python-app-builder smoke-test prune-packages scan-images
+.PHONY: help setup lint build build-python-app build-python-app-builder smoke-test prune-packages scan-images
 
 KEEP ?= 10
 PR_MAX_AGE_DAYS ?= 7
@@ -16,22 +16,14 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-setup: ## Install the pre-commit git hooks
+setup: ## Install mise tools and the pre-commit git hooks
+	mise install
 	pre-commit install
 
 lint: ## Run all pre-commit hooks against every file
 	pre-commit run --all-files
 
-build: build-base build-terraform build-k8s build-python-app build-python-app-builder build-placeholder ## Build all images locally
-
-build-base: ## Build the base image
-	docker build -t base images/base
-
-build-terraform: build-base ## Build the terraform image (FROM base)
-	docker build --build-arg BASE_IMAGE=base -t terraform images/terraform
-
-build-k8s: build-base ## Build the k8s image (FROM base)
-	docker build --build-arg BASE_IMAGE=base -t k8s images/k8s
+build: build-python-app build-python-app-builder build-placeholder ## Build all images locally
 
 build-python-app: ## Build the python-app runtime image
 	docker build -t python-app images/python-app
