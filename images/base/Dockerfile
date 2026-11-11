@@ -68,7 +68,7 @@ ARG PRE_COMMIT_URL="https://github.com/pre-commit/pre-commit/releases/download/v
 ARG SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz"
 # uv also names its assets "x86_64"/"aarch64", and publishes a .sha256 beside
 # each one, which the install step verifies against.
-ARG UV_URL="https://github.com/astral-sh/uv/releases/download/0.13.6/uv-aarch64-unknown-linux-gnu.tar.gz"
+ARG UV_URL="https://github.com/astral-sh/uv/releases/download/0.13.7/uv-aarch64-unknown-linux-gnu.tar.gz"
 # The PostgreSQL project's apt repository signing key. Architecture-independent,
 # no version in the URL, so there is nothing for Renovate to bump — it is pinned
 # to a hand-maintained @sha256: digest like the other unversioned downloads.
