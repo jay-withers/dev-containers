@@ -3,7 +3,7 @@
 # stage, which is only safe because this image is python-app: same interpreter,
 # same site-packages path. cd-publish builds it FROM python-app at the same
 # version, so the two can't drift; an app should pin both at the same version.
-ARG BASE_IMAGE="ghcr.io/jay-withers/dev-containers/python-app:latest@sha256:da3196ed360b19b30b086a548fa7ae0bb82726c38984986d57bb209214d70ee8"
+ARG BASE_IMAGE="ghcr.io/jay-withers/dev-containers/python-app:latest@sha256:1da3c2fc52d948c049f0ce9247aed2e1d3cd27dbb50e6d7c3b4d815da9af5457"
 FROM ${BASE_IMAGE}
 
 # Back to root: uv's cache mount lives under /root/.cache/uv, and /app is
