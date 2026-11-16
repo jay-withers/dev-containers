@@ -211,7 +211,7 @@ make prune-packages KEEP=20 DRY_RUN=false      # keep more history
 make prune-packages PR_MAX_AGE_DAYS=1          # sweep PR tags sooner
 ```
 
-The workflow takes the same `keep`, `pr_max_age_days`, and `dry_run` values as `workflow_dispatch` inputs. Deletion uses the repo's `GITHUB_TOKEN`, which is sufficient for packages scoped to this repo; if that ever stops being true, add a `PACKAGES_TOKEN` secret (a PAT with `delete:packages`) and the workflow uses it instead. Note that GitHub refuses to delete any version of a **public** package once it has more than 5,000 downloads — that shows up as a delete failure the job reports and fails on, and can only be resolved via GitHub support.
+The workflow takes the same `keep`, `pr_max_age_days`, and `dry_run` values as `workflow_dispatch` inputs. Deletion uses the repo's `GITHUB_TOKEN`, which is sufficient for packages scoped to this repo; if that ever stops being true, add a `PACKAGES_TOKEN` secret (a PAT with `delete:packages`) and the workflow uses it instead. A failed delete is retried twice, after 10s and then 30s (`DELETE_RETRY_DELAYS`), because a large backlog means hundreds of DELETEs and GitHub throttles a few of them part-way through. A 404 counts as success, since the version is already gone. A delete that still fails is logged with GitHub's own error message, and the job fails. Note that GitHub refuses to delete any version of a **public** package once it has more than 5,000 downloads. That shows up as one of these failures, and only GitHub support can resolve it.
 
 ## Dependency updates
 
