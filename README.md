@@ -74,8 +74,6 @@ Makefile                 # setup / lint / build / smoke-test targets (run `make 
 
 Each root image's `FROM` is pinned by digest, and Renovate bumps it. On top of that, `python-app` runs `apt-get upgrade` and `placeholder` runs `apk upgrade`, both behind the `REBUILD` build arg, so every publish (the weekly one included) picks up the distribution's current security fixes. That part is deliberately not reproducible: an unpinned, un-upgraded package would stay at whatever the upstream base was built with. `python-app-builder` adds uv, copied from Astral's image pinned by version and digest.
 
-Recommended VS Code extensions for working here are in [.vscode/extensions.json](.vscode/extensions.json).
-
 ## Pre-commit hooks
 
 This repo's own hooks (defined in [.pre-commit-config.yaml](.pre-commit-config.yaml)) run on every commit:
@@ -85,8 +83,9 @@ This repo's own hooks (defined in [.pre-commit-config.yaml](.pre-commit-config.y
 | `gitleaks`             | Secret scanning                                                                               |
 | `actionlint`           | GitHub Actions workflow linting                                                               |
 | `check-renovate`       | Renovate config validity                                                                      |
+| `hadolint-docker`      | Dockerfile linting (through Docker, so nothing to install)                                    |
 | `commitlint`           | Conventional commit message format (commit-msg stage)                                         |
-| Standard hooks         | Trailing whitespace, EOF newline, YAML/JSON validity, merge conflicts, large files            |
+| Standard hooks         | Trailing whitespace, EOF newline, YAML/JSON validity and JSON formatting, merge conflicts, large files, line endings, submodules, and `no-commit-to-branch` (no direct commits to `main`) |
 
 Install the tools (`mise.toml`) and hooks, and run them, via the [Makefile](Makefile):
 
@@ -116,6 +115,7 @@ Each list holds **only what that image adds**: every image is smoke-tested by th
 | -------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ci-pre-commit`      | Every PR to `main`                        | Installs all tools and runs `pre-commit run --all-files` to validate hooks                           |
 | `ci-container-build` | PRs that change `images/**`               | Builds the root images (python-app, placeholder), then the leaf FROM its parent (python-app-builder), for `linux/amd64` and `linux/arm64` on native runners, smoke-testing each image on each architecture in the job that builds it |
+| `ci-codeql`          | PRs, merges to `main`, Mondays 03:17 UTC  | CodeQL code scanning of the workflows; findings go to Security → Code scanning and never fail the job |
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and then — once the registry confirms it lists both architectures — as `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |
@@ -154,7 +154,7 @@ The report is organised by **what would fix each finding**, because that is the 
 - **Fixable by a rebuild** — findings in OS packages. `python-app` runs `apt-get upgrade` and `placeholder` `apk upgrade`, so the next publish clears them. This is the headline, because it is the only bucket that can reach zero. Rows are grouped by CVE rather than by package: one gnupg advisory is recorded against ten binary packages, and ten rows saying "apt upgrade" read no differently from one.
 - **Vendored in pinned tool releases** — findings in Go modules compiled into a downloaded binary, or in the Python and npm trees a tool ships alongside itself. Nothing in this repo patches those; the artifact has to be rebuilt by its author. They are grouped by the tool that carries them, out of the headline, because the useful signal is *which* tool is dragging in risk — a tool that stays vulnerable long enough is a decision about whether to keep depending on it, not a number to drive to zero.
 
-Every finding is attributed to the artifact that owns it — `/usr/local/bin/k9s`, `/opt/az`, `apt (ubuntu 24.04)` — rather than left as a bare package name, since a `stdlib` finding is unactionable until you know which binary it came from. Trivy supplies this (the result target for a Go binary, `PkgPath` for a Python or npm package), so it is derived rather than maintained in a table, and a new tool or image needs no change to the script.
+Every finding is attributed to the artifact that owns it — `/usr/local/bin/placeholder`, `/bin/uv`, `debian 12.x` — rather than left as a bare package name, since a `stdlib` finding is unactionable until you know which binary it came from. Trivy supplies this (the result target for a Go binary, `PkgPath` for a Python or npm package), so it is derived rather than maintained in a table, and a new tool or image needs no change to the script.
 
 Detail tables are global, not per-image, with an *Images* column. `python-app-builder` is built `FROM` `python-app`, so per-image tables would repeat python-app's findings in the builder and any total across them would count the same finding twice. Findings are deduplicated on (CVE, package, owner) — the same CVE in two different binaries is two things to fix, but the same finding on both architectures is one finding seen twice — and the *Platforms* column shows where each was seen. Only HIGH/CRITICAL findings with a published fix are tabled; everything else is summarised numerically, because tabling several thousand MEDIUMs makes a report nobody reads. Tables are capped at `MAX_ROWS` (200), set above what these images actually carry, and the remainder is reported as a count rather than dropped silently.
 
@@ -162,7 +162,7 @@ Each report ends with a hidden `scan-state` marker listing what it found. The ne
 
 ### Kernel headers
 
-Debian and Ubuntu record every kernel CVE against `linux-libc-dev`, which on these bases accounts for the large majority of HIGH/CRITICAL findings. That package ships header files, not a kernel — a container uses the host's kernel — so none of those findings is reachable in these images. They are counted in their own column and excluded from the others rather than silently dropped. `IGNORE_PKGS` holds the list; set `IGNORE_PKGS=` to fold them back into the headline.
+Debian records every kernel CVE against `linux-libc-dev`, which on these bases accounts for the large majority of HIGH/CRITICAL findings. That package ships header files, not a kernel — a container uses the host's kernel — so none of those findings is reachable in these images. They are counted in their own column and excluded from the others rather than silently dropped. `IGNORE_PKGS` holds the list; set `IGNORE_PKGS=` to fold them back into the headline.
 
 ### Reading a finding
 
