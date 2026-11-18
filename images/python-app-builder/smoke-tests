@@ -5,5 +5,7 @@
 # of the image: uv must find the image's own interpreter and never download one.
 uv --version
 uvx --version
+# uv's git+https dependencies (appkit) need the git CLI.
+git --version
 test "$(id -u)" = 0
 test "$(realpath "$(uv python find --no-python-downloads)")" = "$(realpath "$(command -v python)")"
