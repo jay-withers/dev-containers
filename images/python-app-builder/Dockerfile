@@ -19,6 +19,16 @@ USER 0
 # as base's UV_URL, so building locally and in an image resolve alike.
 COPY --from=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff /uv /uvx /bin/
 
+# git, because uv fetches a `git+https://` dependency with the git CLI and
+# fails with "Git executable not found" without it. The apps pin jay-withers/
+# appkit that way, at a release tag Renovate can bump. Only this stage carries
+# it: the runtime stage copies the venv, never git. Unpinned like python-app's
+# packages, so a rebuild picks up Debian's current security fixes.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # --no-editable belongs on each app's `uv sync`, not here: without it uv
 # installs the project as a link back to /app/src, which the runtime stage
 # never copies.

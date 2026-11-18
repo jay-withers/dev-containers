@@ -11,7 +11,7 @@ Two are the base the Python apps on the shared Container Apps environment build 
 | Image                | Registry path                                           | Contents                                                                                     |
 | -------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `python-app`         | `ghcr.io/jay-withers/dev-containers/python-app`         | `python:3.14-slim-bookworm`, Debian security updates applied, pip removed, non-root uid 10001, `/app/.venv/bin` on `PATH` |
-| `python-app-builder` | `ghcr.io/jay-withers/dev-containers/python-app-builder` | + uv, running as root, with uv set never to download its own Python                          |
+| `python-app-builder` | `ghcr.io/jay-withers/dev-containers/python-app-builder` | + uv and git, running as root, with uv set never to download its own Python                  |
 | `placeholder`        | `ghcr.io/jay-withers/dev-containers/placeholder`        | A static Go server on `alpine` answering 200 on every path on `$PORT` (default 8080), non-root uid 10001 |
 
 `python-app-builder` is built `FROM` `python-app` at the same version in the same publish, so a venv built in one runs in the other on the same interpreter. A venv is bound to the minor version that created it. Pin both at the **same version**:
@@ -72,7 +72,7 @@ Makefile                 # setup / lint / build / smoke-test targets (run `make 
 
 ## Pinning and patching
 
-Each root image's `FROM` is pinned by digest, and Renovate bumps it. On top of that, `python-app` runs `apt-get upgrade` and `placeholder` runs `apk upgrade`, both behind the `REBUILD` build arg, so every publish (the weekly one included) picks up the distribution's current security fixes. That part is deliberately not reproducible: an unpinned, un-upgraded package would stay at whatever the upstream base was built with. `python-app-builder` adds uv, copied from Astral's image pinned by version and digest.
+Each root image's `FROM` is pinned by digest, and Renovate bumps it. On top of that, `python-app` runs `apt-get upgrade` and `placeholder` runs `apk upgrade`, both behind the `REBUILD` build arg, so every publish (the weekly one included) picks up the distribution's current security fixes. That part is deliberately not reproducible: an unpinned, un-upgraded package would stay at whatever the upstream base was built with. `python-app-builder` adds uv, copied from Astral's image pinned by version and digest, and git (for uv's `git+https` dependencies such as appkit), installed unpinned like python-app's upgrades.
 
 ## Pre-commit hooks
 
