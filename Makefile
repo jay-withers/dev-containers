@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint build build-python-app build-python-app-builder smoke-test prune-packages scan-images
+.PHONY: help setup lint test build build-python-app build-python-app-builder smoke-test prune-packages scan-images
 
 KEEP ?= 10
 PR_MAX_AGE_DAYS ?= 7
@@ -22,6 +22,9 @@ setup: ## Install mise tools and the pre-commit git hooks
 
 lint: ## Run all pre-commit hooks against every file
 	pre-commit run --all-files
+
+test: ## Run the script tests (no network or credentials needed)
+	./scripts/test-prune-packages.sh
 
 build: build-python-app build-python-app-builder build-placeholder ## Build all images locally
 

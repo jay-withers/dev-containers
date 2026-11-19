@@ -74,3 +74,12 @@ repos:
         args:
           - --config
           - commitlint.config.js
+
+  - repo: local
+    hooks:
+      - id: test-prune-packages
+        name: prune-packages tests
+        entry: scripts/test-prune-packages.sh
+        language: system
+        files: ^scripts/(test-)?prune-packages\.sh$
+        pass_filenames: false

@@ -17,6 +17,7 @@ Common tasks are wrapped in the `Makefile` (run `make help` to list them):
 ```sh
 make setup   # mise install (mise.toml), then install the pre-commit git hooks
 make lint    # run all pre-commit hooks against every file (the standard way to validate changes)
+make test    # scripts/test-prune-packages.sh: prune-packages.sh end to end against stub gh/curl
 make build   # build every image locally (python-app, python-app-builder, placeholder)
 make smoke-test  # run each image's smoke tests against the locally built images
 ```
