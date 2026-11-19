@@ -53,6 +53,8 @@
 #                    images/)
 #   DRY_RUN          true to report what would be deleted without deleting it
 #                    (default: false)
+#   DELETE_RETRY_DELAYS  space-separated seconds to wait before each retry of a
+#                    failed delete (default: "10 30", so three attempts)
 
 set -euo pipefail
 
@@ -168,21 +170,42 @@ collect_children() {
 }
 
 # delete_version <versions_api_path> <id> <label>
+#
+# A failed delete is retried with a backoff before it counts as a failure: a
+# large backlog means a long run of DELETEs, and GitHub throttles some of them
+# part-way through, which then succeed on a later attempt. A 404 means the
+# version is already gone (deleted by hand, or by an overlapping run), which is
+# the outcome wanted, so it isn't a failure. Whatever GitHub said is printed, so
+# a real refusal (such as the 5,000-download limit on public packages) can be
+# told apart from a transient one in the job log.
+DELETE_RETRY_DELAYS="${DELETE_RETRY_DELAYS:-10 30}"
+
 delete_version() {
   local versions_path="$1" id="$2" label="$3"
+  local err delay
 
   if [[ "${DRY_RUN}" == "true" ]]; then
     echo "    would delete ${label}"
     return 0
   fi
 
-  if gh api --method DELETE "${versions_path}/${id}" >/dev/null 2>&1; then
-    echo "    deleted ${label}"
-    DELETED=$((DELETED + 1))
-  else
-    echo "    ! failed to delete ${label}" >&2
-    FAILURES="${FAILURES}    ${label}"$'\n'
-  fi
+  for delay in ${DELETE_RETRY_DELAYS} ""; do
+    if err="$(gh api --method DELETE "${versions_path}/${id}" 2>&1 >/dev/null)"; then
+      echo "    deleted ${label}"
+      DELETED=$((DELETED + 1))
+      return 0
+    fi
+    if [[ "${err}" == *"(HTTP 404)"* ]]; then
+      echo "    already gone ${label}"
+      return 0
+    fi
+    [[ -n "${delay}" ]] || break
+    echo "    ! delete of ${label} failed (${err//$'\n'/ }) - retrying in ${delay}s" >&2
+    sleep "${delay}"
+  done
+
+  echo "    ! failed to delete ${label}: ${err//$'\n'/ }" >&2
+  FAILURES="${FAILURES}    ${label}: ${err//$'\n'/ }"$'\n'
 }
 
 for image in ${IMAGES}; do
