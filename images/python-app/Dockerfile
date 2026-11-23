@@ -9,7 +9,7 @@
 # interpreter in both by construction. A venv is bound to the exact minor
 # version that created it; gym-log's Dockerfile tells the market-agent outage
 # that taught this.
-FROM python:3.14-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b
+FROM python:3.15-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9
 
 # Links the package to this repository, which is what gives a workflow's
 # GITHUB_TOKEN write access to it. Inherited by every app image built FROM
