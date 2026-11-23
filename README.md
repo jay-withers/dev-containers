@@ -10,7 +10,7 @@ Two are the base the Python apps on the shared Container Apps environment build 
 
 | Image                | Registry path                                           | Contents                                                                                     |
 | -------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `python-app`         | `ghcr.io/jay-withers/dev-containers/python-app`         | `python:3.14-slim-bookworm`, Debian security updates applied, pip removed, non-root uid 10001, `/app/.venv/bin` on `PATH` |
+| `python-app`         | `ghcr.io/jay-withers/dev-containers/python-app`         | `python:3.15-slim-bookworm`, Debian security updates applied, pip removed, non-root uid 10001, `/app/.venv/bin` on `PATH` |
 | `python-app-builder` | `ghcr.io/jay-withers/dev-containers/python-app-builder` | + uv and git, running as root, with uv set never to download its own Python                  |
 | `placeholder`        | `ghcr.io/jay-withers/dev-containers/placeholder`        | A static Go server on `alpine` answering 200 on every path on `$PORT` (default 8080), non-root uid 10001 |
 
