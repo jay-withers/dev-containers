@@ -6,12 +6,14 @@ The repo is named for what it used to hold as well: VS Code dev container images
 
 ## Runtime images
 
-Two are the base the Python apps on the shared Container Apps environment build `FROM`, and `placeholder` is what an app's Terraform first creates its container app with. They share one pipeline: publishing, scanning, a weekly rebuild and pruning.
+Two pairs are the bases the apps on the shared Container Apps environment build `FROM` (a runtime and a builder for Python, and the same for .NET), and `placeholder` is what an app's Terraform first creates its container app with. They share one pipeline: publishing, scanning, a weekly rebuild and pruning.
 
 | Image                | Registry path                                           | Contents                                                                                     |
 | -------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `python-app`         | `ghcr.io/jay-withers/dev-containers/python-app`         | `python:3.15-slim-bookworm`, Debian security updates applied, pip removed, non-root uid 10001, `/app/.venv/bin` on `PATH` |
 | `python-app-builder` | `ghcr.io/jay-withers/dev-containers/python-app-builder` | + uv and git, running as root, with uv set never to download its own Python                  |
+| `dotnet-app`         | `ghcr.io/jay-withers/dev-containers/dotnet-app`         | `mcr.microsoft.com/dotnet/aspnet:11.0.0-resolute` (the ASP.NET Core and .NET runtimes, no SDK), Ubuntu security updates applied, non-root uid 10001 |
+| `dotnet-app-builder` | `ghcr.io/jay-withers/dev-containers/dotnet-app-builder` | + the .NET SDK, copied from `mcr.microsoft.com/dotnet/sdk:11.0.100-resolute`, running as root |
 | `placeholder`        | `ghcr.io/jay-withers/dev-containers/placeholder`        | A static Go server on `alpine` answering 200 on every path on `$PORT` (default 8080), non-root uid 10001 |
 
 `python-app-builder` is built `FROM` `python-app` at the same version in the same publish, so a venv built in one runs in the other on the same interpreter. A venv is bound to the minor version that created it. Pin both at the **same version**:
@@ -29,9 +31,25 @@ COPY --from=builder --chown=10001:10001 /app/.venv /app/.venv
 ENTRYPOINT ["<console-script>"]
 ```
 
-The app must set its own `org.opencontainers.image.source` label. `python-app` carries this repo's, and an app image that inherits it is linked to this repository's packages rather than its own.
+`dotnet-app-builder` is the same arrangement for a .NET app: built `FROM` `dotnet-app` at the same version, with the SDK copied in, so an app builds against the exact runtime and OS it runs on. Its smoke test fails if the SDK brings a second .NET runtime, which is how the `aspnet` and `sdk` tags drifting apart shows. Its SDK should be the one the app's `mise.toml` pins, since CI tests on that. Pin both at the **same version**:
 
-`apt-get upgrade` in `python-app` re-runs on every publish, because `cd-publish` passes the version as the `REBUILD` build arg. Without that, the weekly rebuild would restore the layer from the GHA cache and republish last week's packages. A fix reaches an app only when that app's Renovate digest PR merges and deploys.
+```dockerfile
+FROM ghcr.io/jay-withers/dev-containers/dotnet-app-builder:v1.2.3@sha256:... AS builder
+WORKDIR /src
+COPY . .
+RUN dotnet restore --locked-mode && dotnet publish src/<App> -c Release --no-restore -o /out
+
+FROM ghcr.io/jay-withers/dev-containers/dotnet-app:v1.2.3@sha256:...
+LABEL org.opencontainers.image.source="https://github.com/jay-withers/<app>"
+COPY --from=builder --chown=10001:10001 /out /app
+ENTRYPOINT ["dotnet", "/app/<App>.dll"]
+```
+
+`dotnet-app` is Ubuntu, not Microsoft's chiseled or distroless variant, deliberately: those have no apt, so the rebuild could not apply Ubuntu's fixes between Microsoft's releases. It listens where the base does (`ASPNETCORE_HTTP_PORTS=8080`), and replaces the base's own `app` user (uid 1654) with uid 10001, setting `APP_UID` to match.
+
+The app must set its own `org.opencontainers.image.source` label. The runtime images carry this repo's, and an app image that inherits it is linked to this repository's packages rather than its own.
+
+`apt-get upgrade` in `python-app` and `dotnet-app` re-runs on every publish, because `cd-publish` passes the version as the `REBUILD` build arg. Without that, the weekly rebuild would restore the layer from the GHA cache and republish last week's packages. A fix reaches an app only when that app's Renovate digest PR merges and deploys.
 
 `placeholder` is the image a new app's container app is **created** with, so the first `terraform apply` doesn't depend on a release that doesn't exist yet. Point the container at it, set `PORT` to the ingress target port, and keep the image under `ignore_changes`; the app's own pipeline deploys the real image over it:
 
@@ -63,6 +81,8 @@ It answers 200 on every path, so the app's own probes (`/healthz`, `/api/health`
 images/
   python-app/            # runtime base for the Python apps
   python-app-builder/    # FROM python-app + uv, for an app's builder stage
+  dotnet-app/            # runtime base for the .NET apps
+  dotnet-app-builder/    # FROM dotnet-app + the .NET SDK, for an app's build stage
   placeholder/           # first-revision image for a new container app
 mise.toml                # pinned tools for working on this repo (python, pre-commit, shellcheck)
 .pre-commit-config.yaml  # pre-commit hooks (+ .gitleaks.toml, commitlint.config.js)
@@ -72,7 +92,7 @@ Makefile                 # setup / lint / build / smoke-test targets (run `make 
 
 ## Pinning and patching
 
-Each root image's `FROM` is pinned by digest, and Renovate bumps it. On top of that, `python-app` runs `apt-get upgrade` and `placeholder` runs `apk upgrade`, both behind the `REBUILD` build arg, so every publish (the weekly one included) picks up the distribution's current security fixes. That part is deliberately not reproducible: an unpinned, un-upgraded package would stay at whatever the upstream base was built with. `python-app-builder` adds uv, copied from Astral's image pinned by version and digest, and git (for uv's `git+https` dependencies such as appkit), installed unpinned like python-app's upgrades.
+Each root image's `FROM` is pinned by digest, and Renovate bumps it. On top of that, `python-app` and `dotnet-app` run `apt-get upgrade` and `placeholder` runs `apk upgrade`, both behind the `REBUILD` build arg, so every publish (the weekly one included) picks up the distribution's current security fixes. That part is deliberately not reproducible: an unpinned, un-upgraded package would stay at whatever the upstream base was built with. `python-app-builder` adds uv, copied from Astral's image pinned by version and digest, and git (for uv's `git+https` dependencies such as appkit), installed unpinned like python-app's upgrades. `dotnet-app-builder` adds the SDK, copied from Microsoft's SDK image pinned by version and digest.
 
 ## Pre-commit hooks
 
@@ -115,12 +135,12 @@ Each list holds **only what that image adds**: every image is smoke-tested by th
 | Workflow             | When it runs                              | What it does                                                                                         |
 | -------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ci-pre-commit`      | Every PR to `main`                        | Installs all tools and runs `pre-commit run --all-files` to validate hooks                           |
-| `ci-container-build` | PRs that change `images/**`               | Builds the root images (python-app, placeholder), then the leaf FROM its parent (python-app-builder), for `linux/amd64` and `linux/arm64` on native runners, smoke-testing each image on each architecture in the job that builds it |
+| `ci-container-build` | PRs that change `images/**`               | Builds the root images (python-app, dotnet-app, placeholder), then each leaf FROM its parent (python-app-builder, dotnet-app-builder), for `linux/amd64` and `linux/arm64` on native runners, smoke-testing each image on each architecture in the job that builds it |
 | `ci-codeql`          | PRs, merges to `main`, Mondays 03:17 UTC  | CodeQL code scanning of the workflows; findings go to Security → Code scanning and never fail the job |
 | `cd-tag`             | Every merge to `main`                     | Bumps the semver tag and cuts a GitHub release via the shared template, then calls `cd-publish`      |
 | `cd-publish`         | Called by `cd-tag`/`cd-weekly`, or manual | Checks out the tag, builds each image per architecture on a native runner, and merges the digests into one multi-arch manifest per image, published as that version and then — once the registry confirms it lists both architectures — as `latest` |
 | `cd-weekly`          | Mondays 06:00 UTC, or run manually        | Bumps the patch version from the latest release and publishes it (new tag + `latest`) for OS patches |
-| `cd-patch-check`     | Daily 05:00 UTC except Monday, or manual  | Scans `python-app:latest` for fixable HIGH/CRITICAL OS findings (what each app's Trivy gate fails on) and dispatches `cd-weekly` early when it finds one |
+| `cd-patch-check`     | Daily 05:00 UTC except Monday, or manual  | Scans `python-app:latest` and `dotnet-app:latest` for fixable HIGH/CRITICAL OS findings (what each app's Trivy gate fails on) and dispatches `cd-weekly` early when it finds one |
 | `cd-scan`            | Last stage of `cd-publish`, or manual     | Scans the images just published for known vulnerabilities and reports the findings (see below)       |
 | `cd-prune`           | Mondays 08:00 UTC, or run manually        | Prunes old image versions and spent CI PR tags from GHCR (see below)                                 |
 
@@ -152,7 +172,7 @@ To get the email, GitHub notifications for **Issues** must be enabled on your ac
 
 The report is organised by **what would fix each finding**, because that is the only thing a reader can act on:
 
-- **Fixable by a rebuild** — findings in OS packages. `python-app` runs `apt-get upgrade` and `placeholder` `apk upgrade`, so the next publish clears them. This is the headline, because it is the only bucket that can reach zero. Rows are grouped by CVE rather than by package: one gnupg advisory is recorded against ten binary packages, and ten rows saying "apt upgrade" read no differently from one.
+- **Fixable by a rebuild** — findings in OS packages. `python-app` and `dotnet-app` run `apt-get upgrade` and `placeholder` `apk upgrade`, so the next publish clears them. This is the headline, because it is the only bucket that can reach zero. Rows are grouped by CVE rather than by package: one gnupg advisory is recorded against ten binary packages, and ten rows saying "apt upgrade" read no differently from one.
 - **Vendored in pinned tool releases** — findings in Go modules compiled into a downloaded binary, or in the Python and npm trees a tool ships alongside itself. Nothing in this repo patches those; the artifact has to be rebuilt by its author. They are grouped by the tool that carries them, out of the headline, because the useful signal is *which* tool is dragging in risk — a tool that stays vulnerable long enough is a decision about whether to keep depending on it, not a number to drive to zero.
 
 Every finding is attributed to the artifact that owns it — `/usr/local/bin/placeholder`, `/bin/uv`, `debian 12.x` — rather than left as a bare package name, since a `stdlib` finding is unactionable until you know which binary it came from. Trivy supplies this (the result target for a Go binary, `PkgPath` for a Python or npm package), so it is derived rather than maintained in a table, and a new tool or image needs no change to the script.
@@ -169,7 +189,7 @@ Debian records every kernel CVE against `linux-libc-dev`, which on these bases a
 
 Fixable findings in these images come from three places, each with a different fix:
 
-- **OS packages.** `python-app` runs `apt-get upgrade` (and `placeholder` `apk upgrade`), so these are patched to whatever Debian (or Alpine) currently ships as of the build — the weekly rebuild, and `cd-patch-check`'s early one, keep that current. A finding surviving here means the distribution has published no fix, or the fix needs a package added or removed, which `upgrade` won't do.
+- **OS packages.** `python-app` and `dotnet-app` run `apt-get upgrade` (and `placeholder` `apk upgrade`), so these are patched to whatever Debian, Ubuntu (or Alpine) currently ships as of the build — the weekly rebuild, and `cd-patch-check`'s early one, keep that current. A finding surviving here means the distribution has published no fix, or the fix needs a package added or removed, which `upgrade` won't do.
 - **libraries vendored inside a binary** — the Go standard library compiled into `placeholder`'s server, or what is compiled into uv. A newer upstream release (Go for the placeholder build stage, uv for the builder) is what clears these, and Renovate raises those PRs. They are counted separately from the headline rather than presented as a to-do list.
 - **kernel headers**, as above — nothing to fix.
 

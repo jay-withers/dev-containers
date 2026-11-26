@@ -17,7 +17,7 @@
 # The report is organised by *what would fix the finding*, because that is the
 # only thing the reader can act on:
 #
-#   Fixable by a rebuild - findings in apt packages. The base image runs
+#   Fixable by a rebuild - findings in apt packages. The runtime images run
 #   apt-get upgrade, so the next publish clears them. This is the headline: it
 #   is the bucket that can reach zero, and the one a human decides about.
 #
@@ -514,8 +514,8 @@ REPORT
 cat <<REPORT
 ### Fixable by a rebuild
 
-Findings in OS packages. \`python-app\` runs \`apt-get upgrade\` and \`placeholder\`
-\`apk upgrade\`, so publishing a new version clears these - \`cd-weekly\` does that every Monday.
+Findings in OS packages. \`python-app\` and \`dotnet-app\` run \`apt-get upgrade\` and
+\`placeholder\` \`apk upgrade\`, so publishing a new version clears these - \`cd-weekly\` does that every Monday.
 
 REPORT
 

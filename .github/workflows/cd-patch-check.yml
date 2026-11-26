@@ -1,17 +1,19 @@
 name: cd-patch-check
 
-# Daily check for a security fix waiting in Debian that python-app has not
-# picked up yet. When there is one, it dispatches cd-weekly early instead of
-# leaving it until Monday.
+# Daily check for a security fix waiting in Debian or Ubuntu that a runtime
+# image (python-app, dotnet-app) has not picked up yet. When there is one, it
+# dispatches cd-weekly early instead of leaving it until Monday.
 #
 # Why: every app on the shared Container Apps environment builds FROM
-# python-app, and each app's container-build check fails on a HIGH or CRITICAL
-# finding with a fix available. On 2026-11-05, apt 2.6.2 landed mid-week, and
-# market-agent's next PR could not merge until cd-weekly was run by hand. So
-# this checks the same thing that gate checks: OS packages, HIGH and CRITICAL,
-# fixed upstream. Those are exactly what a rebuild clears, because the image
-# runs `apt-get upgrade`. Vendored findings are left to cd-scan's report, since
-# a rebuild does not touch them.
+# python-app or dotnet-app, and each app's container-build check fails on a
+# HIGH or CRITICAL finding with a fix available. On 2026-11-05, apt 2.6.2
+# landed mid-week, and market-agent's next PR could not merge until cd-weekly
+# was run by hand. So this checks the same thing that gate checks: OS
+# packages, HIGH and CRITICAL, fixed upstream. Those are exactly what a
+# rebuild clears, because each image runs `apt-get upgrade`. The builder
+# images are not checked: nothing from them ships, so no app's gate scans
+# them. Vendored findings are left to cd-scan's report, since a rebuild does
+# not touch them.
 #
 # Not a second report: cd-scan still writes the weekly report and owns the
 # issue. A quiet day here does nothing and sends nothing. A dispatch shows up
@@ -52,31 +54,48 @@ jobs:
 
       # Both platforms: the fix can land for one architecture's archive before
       # the other's, and either one failing is enough to block an app.
-      - name: Scan python-app:latest for fixable OS findings
+      # One rebuild publishes every image, so the findings are summed across
+      # them: any one is enough to dispatch. An image with no `latest` yet (one
+      # added since the last publish) is skipped with a warning rather than
+      # failing the check for the images that do exist. Only a registry
+      # not-found counts as that: any other lookup error (auth, a 5xx, the
+      # network) fails the step, so a broken check never reads as clean.
+      - name: Scan the runtime images for fixable OS findings
         id: scan
         env:
-          IMAGE: ghcr.io/${{ github.repository }}/python-app:latest
+          IMAGE_REPO: ghcr.io/${{ github.repository }}
         run: |
           found=0
-          for platform in linux/amd64 linux/arm64; do
-            echo "::group::${IMAGE} (${platform})"
-            trivy image --quiet --scanners vuln --platform "${platform}" \
-              --pkg-types os --severity HIGH,CRITICAL --ignore-unfixed \
-              --format json --output result.json "${IMAGE}"
-            trivy convert --quiet --format table result.json
-            count="$(jq '[.Results[]?.Vulnerabilities[]?] | length' result.json)"
-            echo "::endgroup::"
-            echo "${platform}: ${count} fixable HIGH/CRITICAL OS finding(s)"
-            found=$((found + count))
+          for name in python-app dotnet-app; do
+            image="${IMAGE_REPO}/${name}:latest"
+            if ! err="$(docker buildx imagetools inspect "${image}" 2>&1 >/dev/null)"; then
+              if grep -qiE 'not found|manifest unknown' <<<"${err}"; then
+                echo "::warning::${image} is not published yet; skipped."
+                continue
+              fi
+              echo "::error::Could not look up ${image}: ${err}"
+              exit 1
+            fi
+            for platform in linux/amd64 linux/arm64; do
+              echo "::group::${image} (${platform})"
+              trivy image --quiet --scanners vuln --platform "${platform}" \
+                --pkg-types os --severity HIGH,CRITICAL --ignore-unfixed \
+                --format json --output result.json "${image}"
+              trivy convert --quiet --format table result.json
+              count="$(jq '[.Results[]?.Vulnerabilities[]?] | length' result.json)"
+              echo "::endgroup::"
+              echo "${name} ${platform}: ${count} fixable HIGH/CRITICAL OS finding(s)"
+              found=$((found + count))
+            done
           done
           echo "found=${found}" >> "$GITHUB_OUTPUT"
           if (( found == 0 )); then
-            echo "Nothing to patch: python-app:latest is clean." >> "$GITHUB_STEP_SUMMARY"
+            echo "Nothing to patch: the runtime images are clean." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # Guards against rebuilding in a loop. If the last release is under a
       # day old, the rebuild has already happened and did not clear the
-      # finding (the fix is not in Debian's archive for this suite yet, or
+      # finding (the fix is not in the distribution's archive yet, or
       # Trivy has it wrong). Rebuilding again tomorrow would not help either,
       # and every release opens a Renovate PR in five apps. A cd-weekly
       # already queued or running is left to finish.
@@ -97,10 +116,10 @@ jobs:
           published="$(gh release view --json publishedAt --jq .publishedAt)"
           age=$(( $(date -u +%s) - $(date -u -d "${published}" +%s) ))
           if (( age < 86400 )); then
-            echo "::warning::${FOUND} fixable finding(s) remain in python-app:latest, but the latest release is only $((age / 3600))h old, so a rebuild has not cleared them. Not rebuilding again."
+            echo "::warning::${FOUND} fixable finding(s) remain in the runtime images, but the latest release is only $((age / 3600))h old, so a rebuild has not cleared them. Not rebuilding again."
             echo "${FOUND} fixable finding(s) remain after a rebuild under a day old; not rebuilding again." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           gh workflow run cd-weekly.yml
-          echo "${FOUND} fixable HIGH/CRITICAL OS finding(s) in python-app:latest: dispatched cd-weekly." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "${FOUND} fixable HIGH/CRITICAL OS finding(s) in the runtime images: dispatched cd-weekly." | tee -a "$GITHUB_STEP_SUMMARY"

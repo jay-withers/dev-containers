@@ -1,0 +1,11 @@
+# Commands run inside the dotnet-app image to prove it is what apps expect, one
+# per line. Read by scripts/smoke-test.sh.
+#
+# A runtime image, so this checks its contract: the host runs and has the
+# ASP.NET Core and .NET runtimes, there is no SDK, and the default user is the
+# numeric non-root one.
+dotnet --list-runtimes
+dotnet --list-runtimes | grep -q '^Microsoft.AspNetCore.App '
+test -z "$(dotnet --list-sdks)"
+test "$(id -u)" = 10001
+test "$APP_UID" = 10001
