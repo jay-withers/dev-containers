@@ -1,0 +1,11 @@
+# Commands run inside the dotnet-app-builder image, one per line. Read by
+# scripts/smoke-test.sh.
+#
+# Only what this image adds on top of dotnet-app: the SDK, and that it builds.
+# The runtime check is the point of the image: the SDK's copy of the .NET
+# runtime must be the one dotnet-app already has, so an app builds against
+# the runtime it runs on. Two versions means the aspnet and sdk tags drifted.
+dotnet --list-sdks
+test "$(dotnet --list-runtimes | grep -c '^Microsoft.NETCore.App ')" = 1
+test "$(id -u)" = 0
+cd /tmp && dotnet new console --output smoke >/dev/null && dotnet build smoke --nologo -v q
