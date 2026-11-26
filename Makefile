@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint test build build-python-app build-python-app-builder build-dotnet-app build-dotnet-app-builder smoke-test prune-packages scan-images
+.PHONY: help setup lint test build build-python-app build-python-app-builder build-dotnet-app build-dotnet-app-builder build-placeholder smoke-test prune-packages scan-images
 
 KEEP ?= 10
 PR_MAX_AGE_DAYS ?= 7
