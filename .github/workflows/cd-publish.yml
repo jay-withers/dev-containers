@@ -8,7 +8,7 @@ name: cd-publish
 # A follow-up merge job then combines the per-architecture digests into a single
 # multi-arch manifest list, published under both the version and latest tags.
 #
-# Root images (python-app, dotnet-app, placeholder) build first; each leaf then builds FROM
+# Root images (python-app, dotnet-app, node-app, placeholder) build first; each leaf then builds FROM
 # its parent root at the same version.
 on:
   workflow_call:
@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [python-app, dotnet-app, placeholder]
+        image: [python-app, dotnet-app, node-app, placeholder]
         arch: [amd64, arm64]
         include:
           - arch: amd64
@@ -60,7 +60,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # REBUILD is consumed by the root images only (python-app, dotnet-app, placeholder): a new
+      # REBUILD is consumed by the root images only (python-app, dotnet-app, node-app, placeholder): a new
       # value per version forces its apt-get/apk upgrade layer past the GHA cache (see its Dockerfile).
       - name: Build and push ${{ matrix.image }} image for linux/${{ matrix.arch }}
         id: build
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        image: [python-app, dotnet-app, placeholder]
+        image: [python-app, dotnet-app, node-app, placeholder]
     steps:
       - name: Download digests
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -147,7 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [python-app-builder, dotnet-app-builder]
+        image: [python-app-builder, dotnet-app-builder, node-app-builder]
         arch: [amd64, arm64]
         # `parent` is the root image each leaf builds FROM.
         include:
@@ -155,6 +155,8 @@ jobs:
             parent: python-app
           - image: dotnet-app-builder
             parent: dotnet-app
+          - image: node-app-builder
+            parent: node-app
           - arch: amd64
             runner: ubuntu-24.04
           - arch: arm64
@@ -209,7 +211,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        image: [python-app-builder, dotnet-app-builder]
+        image: [python-app-builder, dotnet-app-builder, node-app-builder]
     steps:
       - name: Download digests
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
