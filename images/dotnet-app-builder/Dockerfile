@@ -7,7 +7,7 @@
 # The default BASE_IMAGE carries no digest until dotnet-app's first release;
 # CI and cd-publish always pass the parent explicitly, and Renovate pins this
 # once a release exists.
-ARG BASE_IMAGE="ghcr.io/jay-withers/dev-containers/dotnet-app:latest"
+ARG BASE_IMAGE="ghcr.io/jay-withers/dev-containers/dotnet-app:latest@sha256:553c52ab245181b443de271c0f8157585c1a6009a3ddab8d19bc509162e0a0b0"
 
 # The SDK is copied out of Microsoft's SDK image rather than built FROM it, as
 # python-app-builder copies uv in, so this stays dotnet-app underneath. The
