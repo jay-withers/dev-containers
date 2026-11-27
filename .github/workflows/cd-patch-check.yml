@@ -1,11 +1,11 @@
 name: cd-patch-check
 
 # Daily check for a security fix waiting in Debian or Ubuntu that a runtime
-# image (python-app, dotnet-app) has not picked up yet. When there is one, it
+# image (python-app, dotnet-app, node-app) has not picked up yet. When there is one, it
 # dispatches cd-weekly early instead of leaving it until Monday.
 #
 # Why: every app on the shared Container Apps environment builds FROM
-# python-app or dotnet-app, and each app's container-build check fails on a
+# python-app, dotnet-app or node-app, and each app's container-build check fails on a
 # HIGH or CRITICAL finding with a fix available. On 2026-11-05, apt 2.6.2
 # landed mid-week, and market-agent's next PR could not merge until cd-weekly
 # was run by hand. So this checks the same thing that gate checks: OS
@@ -66,7 +66,7 @@ jobs:
           IMAGE_REPO: ghcr.io/${{ github.repository }}
         run: |
           found=0
-          for name in python-app dotnet-app; do
+          for name in python-app dotnet-app node-app; do
             image="${IMAGE_REPO}/${name}:latest"
             if ! err="$(docker buildx imagetools inspect "${image}" 2>&1 >/dev/null)"; then
               if grep -qiE 'not found|manifest unknown' <<<"${err}"; then

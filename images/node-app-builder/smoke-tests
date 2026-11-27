@@ -1,0 +1,12 @@
+# Commands run inside the node-app-builder image, one per line. Read by
+# scripts/smoke-test.sh.
+#
+# Only what this image adds on top of node-app: npm, as root, and that it
+# installs. node is node-app's own: the builder adds npm, never a second Node.
+npm --version
+test "$(id -u)" = 0
+test "$(command -v node)" = /usr/local/bin/node
+# The install is from a local package, not the registry: a registry outage
+# must not fail every images/** PR when nothing in the image is broken.
+mkdir -p /tmp/dep /tmp/smoke && printf '{"name":"dep","version":"1.0.0","main":"index.js"}' > /tmp/dep/package.json && echo 'module.exports = 42;' > /tmp/dep/index.js
+cd /tmp/smoke && npm init -y >/dev/null && npm install --ignore-scripts --no-audit --offline ../dep >/dev/null && test -f package-lock.json && test "$(node -p 'require("dep")')" = 42

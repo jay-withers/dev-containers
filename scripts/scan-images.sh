@@ -514,7 +514,7 @@ REPORT
 cat <<REPORT
 ### Fixable by a rebuild
 
-Findings in OS packages. \`python-app\` and \`dotnet-app\` run \`apt-get upgrade\` and
+Findings in OS packages. \`python-app\`, \`dotnet-app\` and \`node-app\` run \`apt-get upgrade\` and
 \`placeholder\` \`apk upgrade\`, so publishing a new version clears these - \`cd-weekly\` does that every Monday.
 
 REPORT

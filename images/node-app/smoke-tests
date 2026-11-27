@@ -1,0 +1,11 @@
+# Commands run inside the node-app image to prove it is what apps expect, one
+# per line. Read by scripts/smoke-test.sh.
+#
+# A runtime image, so this checks its contract: node runs, and runs TypeScript
+# directly (type stripping, which the apps rely on to ship no build output),
+# there is no package manager, and the default user is the numeric non-root one.
+node --version
+node -e 'if (process.env.NODE_ENV !== "production") process.exit(1)'
+printf 'const n: number = 1;\nconsole.log(n);\n' > /tmp/smoke.ts && test "$(node /tmp/smoke.ts)" = 1
+test -z "$(command -v npm npx corepack yarn)"
+test "$(id -u)" = 10001

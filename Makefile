@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint test build build-python-app build-python-app-builder build-dotnet-app build-dotnet-app-builder build-placeholder smoke-test prune-packages scan-images
+.PHONY: help setup lint test build build-python-app build-python-app-builder build-dotnet-app build-dotnet-app-builder build-node-app build-node-app-builder build-placeholder smoke-test prune-packages scan-images
 
 KEEP ?= 10
 PR_MAX_AGE_DAYS ?= 7
@@ -26,7 +26,7 @@ lint: ## Run all pre-commit hooks against every file
 test: ## Run the script tests (no network or credentials needed)
 	./scripts/test-prune-packages.sh
 
-build: build-python-app build-python-app-builder build-dotnet-app build-dotnet-app-builder build-placeholder ## Build all images locally
+build: build-python-app build-python-app-builder build-dotnet-app build-dotnet-app-builder build-node-app build-node-app-builder build-placeholder ## Build all images locally
 
 build-python-app: ## Build the python-app runtime image
 	docker build -t python-app images/python-app
@@ -39,6 +39,12 @@ build-dotnet-app: ## Build the dotnet-app runtime image
 
 build-dotnet-app-builder: build-dotnet-app ## Build the dotnet-app-builder image (FROM dotnet-app)
 	docker build --build-arg BASE_IMAGE=dotnet-app -t dotnet-app-builder images/dotnet-app-builder
+
+build-node-app: ## Build the node-app runtime image
+	docker build -t node-app images/node-app
+
+build-node-app-builder: build-node-app ## Build the node-app-builder image (FROM node-app)
+	docker build --build-arg BASE_IMAGE=node-app -t node-app-builder images/node-app-builder
 
 build-placeholder: ## Build the placeholder app image
 	docker build -t placeholder images/placeholder
