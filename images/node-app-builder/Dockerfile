@@ -7,7 +7,7 @@
 # The default BASE_IMAGE carries no digest until node-app's first release; CI
 # and cd-publish always pass the parent explicitly, and Renovate pins this
 # once a release exists.
-ARG BASE_IMAGE="ghcr.io/jay-withers/dev-containers/node-app:latest"
+ARG BASE_IMAGE="ghcr.io/jay-withers/dev-containers/node-app:latest@sha256:b85c9fbc858c750d8cc20cd040a924561fd45b89381da4c9c7ebcee70bed862b"
 
 # npm is copied out of the official image at node-app's tag rather than
 # installed, as dotnet-app-builder copies the SDK in: it is the npm that Node
